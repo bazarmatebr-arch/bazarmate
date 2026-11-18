@@ -67,7 +67,7 @@ export type AdminSection =
 const SECTION_LABELS: Record<AdminSection, string> = {
   overview: 'ওভারভিউ ও রিপোর্ট',
   orders: 'অর্ডার ও ফুলফিলমেন্ট প্যানেল',
-  parcels: 'পার্সেল কুরিয়ার (বড়লেখা)',
+  parcels: 'কুরিয়ার সার্ভিস (বড়লেখা)',
   sellers: 'বিক্রেতার আপলোডকৃত পণ্য',
   products: 'পণ্য ও স্টক',
   categories: 'ক্যাটাগরি ও সাব-ক্যাটাগরি',
@@ -504,7 +504,7 @@ export function AdminDashboard({
     { id: 'orders', label: 'অর্ডার ও ফুলফিলমেন্ট', icon: ClipboardList },
     {
       id: 'parcels',
-      label: activeParcelCount > 0 ? `পার্সেল কুরিয়ার (${activeParcelCount})` : 'পার্সেল কুরিয়ার',
+      label: activeParcelCount > 0 ? `কুরিয়ার সার্ভিস (${activeParcelCount})` : 'কুরিয়ার সার্ভিস',
       icon: Truck,
     },
     {
@@ -2513,16 +2513,16 @@ export function AdminDashboard({
             </div>
           )}
 
-          {/* 11. BARLEKHA PARCEL COURIER MANAGEMENT */}
+          {/* 11. BARLEKHA COURIER SERVICE MANAGEMENT */}
           {section === 'parcels' && (
             <div className="space-y-4">
               <div className="bg-white border border-[#E5E4DF] rounded-xl p-4 sm:p-5 flex flex-wrap items-center justify-between gap-3">
                 <div>
                   <h2 className="text-sm font-bold text-[#18181B]">
-                    বড়লেখা উপজেলা পার্সেল রিসিভ ও ডেলিভারি (কুরিয়ার সেবা)
+                    বড়লেখা উপজেলা কুরিয়ার সার্ভিস (পার্সেল রিসিভ ও ডেলিভারি)
                   </h2>
                   <p className="text-xs text-[#52525B]">
-                    পার্সেল পিকআপ, রাইডার অ্যাসাইনমেন্ট, কুরিয়ার চার্জ ও ডেলিভারি স্ট্যাটাস নিয়ন্ত্রণ করুন।
+                    পিকআপ ইউনিয়ন, প্রাপকের ইউনিয়ন, রাইডার অ্যাসাইনমেন্ট, কুরিয়ার চার্জ ও ডেলিভারি স্ট্যাটাস নিয়ন্ত্রণ করুন।
                   </p>
                 </div>
                 <span className="text-xs font-mono-tabular text-[#52525B]">
@@ -2580,7 +2580,7 @@ export function AdminDashboard({
                       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 items-end">
                         <div>
                           <label className="block text-[10px] text-[#52525B] mb-1">
-                            পার্সেল স্ট্যাটাস
+                            কুরিয়ার স্ট্যাটাস
                           </label>
                           <select
                             value={parcel.status}

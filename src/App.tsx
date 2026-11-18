@@ -114,7 +114,10 @@ export default function App() {
       setCategories(data.categories);
       setProducts(data.products);
       setDeliveryZones(data.deliveryZones);
-      if (data.deliveryZones.length > 0 && !selectedZoneId) {
+      if (
+        data.deliveryZones.length > 0 &&
+        (!selectedZoneId || !data.deliveryZones.some((z) => z.id === selectedZoneId))
+      ) {
         setSelectedZoneId(data.deliveryZones[0].id);
       }
       setBanner(data.banner);
@@ -468,7 +471,7 @@ export default function App() {
                       className="inline-flex items-center gap-2 px-5 py-3.5 text-sm font-semibold rounded-lg border border-[#0F6B46]/35 bg-[#0F6B46]/5 text-[#0F6B46] hover:bg-[#0F6B46]/10 transition-colors min-h-[44px]"
                     >
                       <Truck className="w-4 h-4" />
-                      <span>পার্সেল কুরিয়ার সেবা</span>
+                      <span>কুরিয়ার সার্ভিস</span>
                     </button>
                     <button
                       type="button"
@@ -480,10 +483,12 @@ export default function App() {
                   </div>
 
                   {/* Clean unboxed key promises */}
-                  <div className="pt-4 border-t border-[#E5E4DF] flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-[#52525B]">
-                    <span>বড়লেখা উপজেলা ৳{deliveryZones[0]?.charge ?? 100}</span>
+                  <div className="pt-4 border-t border-[#E5E4DF] flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-[#52525B] tabular-nums">
+                    <span>বড়লেখা পৌরসভা ৳{deliveryZones[0]?.charge ?? 40}</span>
                     <span aria-hidden="true">·</span>
-                    <span>সারাদেশে ৳{deliveryZones[1]?.charge ?? 150}</span>
+                    <span>বড়লেখা সদর ৳{deliveryZones[1]?.charge ?? 60}</span>
+                    <span aria-hidden="true">·</span>
+                    <span>অন্যান্য ৳{deliveryZones[2]?.charge ?? 100}</span>
                     <span aria-hidden="true">·</span>
                     <span>Cash on Delivery</span>
                     <span aria-hidden="true">·</span>
@@ -1069,7 +1074,7 @@ export default function App() {
                   onClick={() => setView('parcel')}
                   className="hover:text-white"
                 >
-                  পার্সেল কুরিয়ার সেবা (বড়লেখা)
+                  কুরিয়ার সার্ভিস (বড়লেখা)
                 </button>
               </li>
               <li>

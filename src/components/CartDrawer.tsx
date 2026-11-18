@@ -45,7 +45,7 @@ export function CartDrawer({
   const subtotal = items.reduce((sum, item) => sum + item.product.price * item.quantity, 0);
   const selectedZone =
     deliveryZones.find((z) => z.id === selectedZoneId) || deliveryZones[0];
-  const deliveryCharge = items.length > 0 ? selectedZone?.charge ?? 100 : 0;
+  const deliveryCharge = items.length > 0 ? selectedZone?.charge ?? 40 : 0;
   const discount = appliedCoupon ? Math.min(subtotal, appliedCoupon.discount) : 0;
   const totalAmount = Math.max(0, subtotal - discount) + deliveryCharge;
 

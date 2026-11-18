@@ -632,7 +632,7 @@ async function startServer() {
       parcelType: (body.parcelType || 'সাধারণ পার্সেল').trim().slice(0, 80),
       weight: (body.weight || '১ কেজি পর্যন্ত').trim().slice(0, 40),
       codAmount: Math.max(0, Math.round(Number(body.codAmount) || 0)),
-      deliveryCharge: zone?.charge ?? 100,
+      deliveryCharge: zone?.charge ?? 40,
       note: (body.note || '').trim().slice(0, 250),
       status: 'Booked',
       riderName: '',

@@ -28,17 +28,18 @@ interface ParcelServiceViewProps {
   onBackHome: () => void;
 }
 
-const BARLEKHA_AREAS = [
-  'বড়লেখা পৌরসভা / দক্ষিণবাজার',
-  'উত্তরবাজার / হাজীগঞ্জ রোড',
-  'কাঁঠালতলী বাজার',
-  'দক্ষিণভাগ বাজার',
-  'শাহবাজপুর বাজার',
-  'সুজানগর',
-  'তালিমপুর',
-  'দাসেরবাজার',
-  'বর্নি',
-  'নিজবাহাদুরপুর',
+const BARLEKHA_UNIONS = [
+  'বড়লেখা পৌরসভা',
+  '১নং বর্ণি ইউনিয়ন',
+  '২নং দাসেরবাজার ইউনিয়ন',
+  '৩নং নিজ বাহাদুরপুর ইউনিয়ন',
+  '৪নং উত্তর শাহবাজপুর ইউনিয়ন',
+  '৫নং দক্ষিণ শাহবাজপুর ইউনিয়ন',
+  '৬নং বড়লেখা সদর ইউনিয়ন',
+  '৭নং তালিমপুর ইউনিয়ন',
+  '৮নং দক্ষিণভাগ উত্তর (কাঁঠালতলী) ইউনিয়ন',
+  '৯নং সুজানগর ইউনিয়ন',
+  '১০নং দক্ষিণভাগ দক্ষিণ ইউনিয়ন',
 ];
 
 export function ParcelServiceView({
@@ -48,7 +49,7 @@ export function ParcelServiceView({
 }: ParcelServiceViewProps) {
   const [senderName, setSenderName] = useState(user?.name || '');
   const [senderMobile, setSenderMobile] = useState(user?.mobile || '');
-  const [pickupArea, setPickupArea] = useState(BARLEKHA_AREAS[0]);
+  const [pickupArea, setPickupArea] = useState(BARLEKHA_UNIONS[0]);
   const [pickupAddress, setPickupAddress] = useState('');
 
   const [receiverName, setReceiverName] = useState('');
@@ -56,7 +57,8 @@ export function ParcelServiceView({
   const [deliveryZoneId, setDeliveryZoneId] = useState(
     deliveryZones[0]?.id || 'zone-barlekha',
   );
-  const [deliveryArea, setDeliveryArea] = useState('');
+  const [deliveryArea, setDeliveryArea] = useState(BARLEKHA_UNIONS[0]);
+  const [customDeliveryArea, setCustomDeliveryArea] = useState('');
   const [deliveryAddress, setDeliveryAddress] = useState('');
 
   const [parcelType, setParcelType] = useState('সাধারণ পার্সেল / বক্স');
@@ -93,10 +95,29 @@ export function ParcelServiceView({
   const selectedZone =
     deliveryZones.find((z) => z.id === deliveryZoneId) || deliveryZones[0];
 
+  function handleRecipientUnionChange(union: string) {
+    setDeliveryArea(union);
+    if (union === 'বড়লেখা পৌরসভা') {
+      const z = deliveryZones.find((d) => d.id === 'zone-barlekha');
+      if (z) setDeliveryZoneId(z.id);
+    } else if (union === '৬নং বড়লেখা সদর ইউনিয়ন') {
+      const z = deliveryZones.find((d) => d.id === 'zone-barlekha-sadar');
+      if (z) setDeliveryZoneId(z.id);
+    } else {
+      const z = deliveryZones.find((d) => d.id === 'zone-others');
+      if (z) setDeliveryZoneId(z.id);
+    }
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError('');
     setSubmitting(true);
+    const resolvedDeliveryArea =
+      deliveryArea !== 'OTHER'
+        ? deliveryArea
+        : customDeliveryArea.trim() || selectedZone?.name || 'বড়লেখা উপজেলা';
+
     try {
       const created = await api.createParcel({
         senderName,
@@ -106,7 +127,7 @@ export function ParcelServiceView({
         receiverName,
         receiverMobile,
         deliveryZoneId: selectedZone?.id || 'zone-barlekha',
-        deliveryArea: deliveryArea || selectedZone?.name || 'বড়লেখা উপজেলা',
+        deliveryArea: resolvedDeliveryArea,
         deliveryAddress,
         parcelType,
         weight,
@@ -117,12 +138,12 @@ export function ParcelServiceView({
       setTrackQuery(created.parcelCode);
       setReceiverName('');
       setReceiverMobile('');
-      setDeliveryArea('');
+      setCustomDeliveryArea('');
       setDeliveryAddress('');
       setCodAmount('');
       setNote('');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'পার্সেল বুকিং সম্পন্ন হয়নি।');
+      setError(err instanceof Error ? err.message : 'কুরিয়ার বুকিং সম্পন্ন হয়নি।');
     } finally {
       setSubmitting(false);
     }
@@ -182,44 +203,48 @@ export function ParcelServiceView({
         <div className="border-b border-[#F0EFEA] pb-5 space-y-1.5 max-w-3xl">
           <div className="inline-flex items-center gap-2 text-xs font-semibold text-[#0F6B46]">
             <Truck className="w-4 h-4" />
-            <span>বড়লেখা উপজেলা লোকাল পার্সেল ও কুরিয়ার সেবা</span>
+            <span>বড়লেখা উপজেলা · কুরিয়ার সার্ভিস</span>
           </div>
           <h1 className="text-2xl sm:text-3xl font-bold text-[#18181B]">
-            পার্সেল রিসিভ ও ডেলিভারি বুকিং
+            কুরিয়ার সার্ভিস (পার্সেল রিসিভ ও ডেলিভারি)
           </h1>
           <p className="text-sm text-[#52525B] leading-relaxed">
-            বড়লেখা উপজেলার যেকোনো বাসা, দোকান, বাজার বা কুরিয়ার পয়েন্ট থেকে আপনার পার্সেল রিসিভ করে আমরা নিরাপদে প্রাপকের ঠিকানায় পৌঁছে দিই। ক্যাশ অন ডেলিভারি (COD) টাকা সংগ্রহের সুবিধাও রয়েছে।
+            বড়লেখা পৌরসভা ও উপজেলার সব ১০টি ইউনিয়নে বাসা, দোকান, বাজার বা কুরিয়ার পয়েন্ট থেকে আপনার পার্সেল রিসিভ করে আমরা নিরাপদে প্রাপকের ঠিকানায় পৌঁছে দিই। ক্যাশ অন ডেলিভারি (COD) টাকা সংগ্রহের সুবিধাও রয়েছে।
           </p>
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-          {/* Left Column: Courier Info & Live Parcel Tracking */}
+          {/* Left Column: Courier Info & Live Tracking */}
           <div className="lg:col-span-4 space-y-5">
             <div className="p-4 rounded-xl border border-[#E5E4DF] bg-[#FAF9F6] space-y-3 text-xs">
               <div className="flex items-center gap-2 font-bold text-sm text-[#18181B]">
                 <MapPin className="w-4 h-4 text-[#0F6B46]" />
                 <span>কভারেজ ও চার্জ</span>
               </div>
-              <div className="space-y-1.5 text-[#52525B]">
+              <div className="space-y-1.5 text-[#52525B] tabular-nums">
                 <p>
-                  <span className="font-semibold text-[#18181B]">বড়লেখা উপজেলা (সব ইউনিয়ন ও বাজার):</span>{' '}
-                  ৳{deliveryZones[0]?.charge ?? 100} (২–৪ ঘণ্টায় রিসিভ ও ডেলিভারি)
+                  <span className="font-semibold text-[#18181B]">বড়লেখা পৌরসভার ভিতরে:</span>{' '}
+                  ৳{deliveryZones[0]?.charge ?? 40} ({deliveryZones[0]?.estimatedTime || '১–২ ঘণ্টা'})
                 </p>
                 <p>
-                  <span className="font-semibold text-[#18181B]">সারাদেশে কুরিয়ার হ্যান্ডওভার:</span>{' '}
-                  ৳{deliveryZones[1]?.charge ?? 150} (২৪–৭২ ঘণ্টা)
+                  <span className="font-semibold text-[#18181B]">বড়লেখা সদর:</span>{' '}
+                  ৳{deliveryZones[1]?.charge ?? 60} ({deliveryZones[1]?.estimatedTime || '২–৩ ঘণ্টা'})
+                </p>
+                <p>
+                  <span className="font-semibold text-[#18181B]">অন্যান্য (অন্যান্য ইউনিয়ন ও সারাদেশ):</span>{' '}
+                  ৳{deliveryZones[2]?.charge ?? 100}
                 </p>
               </div>
-              <p className="text-[11px] text-[#71717A] pt-1 border-t border-[#E5E4DF]">
-                কাভার্ড এরিয়া: {BARLEKHA_AREAS.slice(0, 6).join(' · ')} ও আশপাশ।
+              <p className="text-[11px] text-[#71717A] pt-1 border-t border-[#E5E4DF] leading-relaxed">
+                ইউনিয়নসমূহ: {BARLEKHA_UNIONS.join(' · ')}
               </p>
             </div>
 
-            {/* Parcel Tracking Box */}
+            {/* Courier Tracking Box */}
             <div className="p-4 rounded-xl border border-[#E5E4DF] bg-[#FAF9F6] space-y-3">
               <div className="flex items-center gap-2 font-bold text-sm text-[#18181B]">
                 <PackageCheck className="w-4 h-4 text-[#0F6B46]" />
-                <span>পার্সেল ট্র্যাক করুন</span>
+                <span>কুরিয়ার ট্র্যাক করুন</span>
               </div>
               <form onSubmit={handleTrack} className="flex gap-2">
                 <input
@@ -281,31 +306,31 @@ export function ParcelServiceView({
                 <CheckCircle2 className="w-12 h-12 text-[#0F6B46] mx-auto" strokeWidth={1.6} />
                 <div className="space-y-1">
                   <p className="text-xs font-mono-tabular text-[#52525B]">
-                    পার্সেল কোড: {bookedParcel.parcelCode}
+                    কুরিয়ার ট্র্যাকিং কোড: {bookedParcel.parcelCode}
                   </p>
                   <h2 className="text-xl font-bold text-[#18181B]">
-                    আপনার পার্সেল পিকআপ ও ডেলিভারি বুকিং সম্পন্ন হয়েছে!
+                    আপনার কুরিয়ার সার্ভিস বুকিং সম্পন্ন হয়েছে!
                   </h2>
                   <p className="text-sm text-[#52525B]">
-                    আমাদের বড়লেখা রাইডার দ্রুত {bookedParcel.pickupArea} থেকে পার্সেল রিসিভ করে পৌঁছে দেবে।
+                    আমাদের বড়লেখা রাইডার দ্রুত {bookedParcel.pickupArea} থেকে পার্সেল রিসিভ করে {bookedParcel.deliveryArea}-এ পৌঁছে দেবে।
                   </p>
                 </div>
 
                 <div className="max-w-md mx-auto bg-white border border-[#E5E4DF] rounded-xl p-4 text-left text-xs space-y-2 tabular-nums">
                   <div className="flex justify-between">
-                    <span className="text-[#52525B]">পিকআপ ঠিকানা</span>
+                    <span className="text-[#52525B]">পিকআপ ইউনিয়ন</span>
                     <span className="font-semibold text-[#18181B] text-right">
                       {bookedParcel.pickupArea}
                     </span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-[#52525B]">প্রাপক</span>
+                    <span className="text-[#52525B]">প্রাপক ও গন্তব্য</span>
                     <span className="font-semibold text-[#18181B] text-right">
-                      {bookedParcel.receiverName} ({bookedParcel.receiverMobile})
+                      {bookedParcel.receiverName} ({bookedParcel.receiverMobile}) · {bookedParcel.deliveryArea}
                     </span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-[#52525B]">ডেলিভারি চার্জ</span>
+                    <span className="text-[#52525B]">কুরিয়ার চার্জ</span>
                     <span className="font-bold text-[#0F6B46]">৳{bookedParcel.deliveryCharge}</span>
                   </div>
                   {bookedParcel.codAmount > 0 && (
@@ -321,7 +346,7 @@ export function ParcelServiceView({
                   onClick={() => setBookedParcel(null)}
                   className="px-6 py-2.5 text-xs font-semibold rounded-lg bg-[#0F6B46] text-white hover:bg-[#0B5235]"
                 >
-                  আরেকটি পার্সেল বুকিং করুন
+                  আরেকটি কুরিয়ার বুকিং করুন
                 </button>
               </div>
             ) : (
@@ -332,7 +357,7 @@ export function ParcelServiceView({
                 {/* Sender Section */}
                 <div className="space-y-3">
                   <h2 className="text-sm font-bold text-[#18181B]">
-                    ১. প্রেরক ও পার্সেল রিসিভ (পিকআপ) ঠিকানা
+                    ১. প্রেরক ও রিসিভ (পিকআপ) ঠিকানা
                   </h2>
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                     <div>
@@ -363,16 +388,16 @@ export function ParcelServiceView({
                     </div>
                     <div>
                       <label className="block text-[11px] font-medium text-[#52525B] mb-1">
-                        পিকআপ বাজার / ইউনিয়ন *
+                        পিকআপ ইউনিয়ন / পৌরসভা *
                       </label>
                       <select
                         value={pickupArea}
                         onChange={(e) => setPickupArea(e.target.value)}
                         className="w-full px-3 py-2 text-sm bg-white border border-[#E5E4DF] rounded-lg focus:outline-none focus:border-[#0F6B46]"
                       >
-                        {BARLEKHA_AREAS.map((area) => (
-                          <option key={area} value={area}>
-                            {area}
+                        {BARLEKHA_UNIONS.map((union) => (
+                          <option key={union} value={union}>
+                            {union}
                           </option>
                         ))}
                       </select>
@@ -443,29 +468,45 @@ export function ParcelServiceView({
                     </div>
                   </div>
                   <div className="grid grid-cols-1 sm:grid-cols-12 gap-3">
-                    <div className="sm:col-span-4">
+                    <div className="sm:col-span-5">
                       <label className="block text-[11px] font-medium text-[#52525B] mb-1">
-                        ডেলিভারি এলাকা / বাজার *
+                        প্রাপকের ইউনিয়ন / পৌরসভা (বড়লেখা উপজেলা) *
                       </label>
-                      <input
-                        type="text"
-                        required
-                        value={deliveryArea}
-                        onChange={(e) => setDeliveryArea(e.target.value)}
-                        placeholder="যেমন: শাহবাজপুর / জুড়ী"
-                        className="w-full px-3 py-2 text-sm bg-white border border-[#E5E4DF] rounded-lg focus:outline-none focus:border-[#0F6B46]"
-                      />
+                      <div className="space-y-2">
+                        <select
+                          value={deliveryArea}
+                          onChange={(e) => handleRecipientUnionChange(e.target.value)}
+                          className="w-full px-3 py-2 text-sm bg-white border border-[#E5E4DF] rounded-lg focus:outline-none focus:border-[#0F6B46]"
+                        >
+                          {BARLEKHA_UNIONS.map((union) => (
+                            <option key={union} value={union}>
+                              {union}
+                            </option>
+                          ))}
+                          <option value="OTHER">অন্যান্য এলাকা (লিখে দিন)</option>
+                        </select>
+                        {deliveryArea === 'OTHER' && (
+                          <input
+                            type="text"
+                            required
+                            value={customDeliveryArea}
+                            onChange={(e) => setCustomDeliveryArea(e.target.value)}
+                            placeholder="যেমন: জুড়ী / সিলেট সদর / ঢাকা"
+                            className="w-full px-3 py-2 text-sm bg-white border border-[#E5E4DF] rounded-lg focus:outline-none focus:border-[#0F6B46]"
+                          />
+                        )}
+                      </div>
                     </div>
-                    <div className="sm:col-span-8">
+                    <div className="sm:col-span-7">
                       <label className="block text-[11px] font-medium text-[#52525B] mb-1">
-                        প্রাপকের সম্পূর্ণ ডেলিভারি ঠিকানা *
+                        প্রাপকের গ্রাম / বাজার / বাড়ির বিস্তারিত ঠিকানা *
                       </label>
                       <input
                         type="text"
                         required
                         value={deliveryAddress}
                         onChange={(e) => setDeliveryAddress(e.target.value)}
-                        placeholder="বাড়ির নাম, রাস্তা বা পরিচিত স্থানের নাম"
+                        placeholder="গ্রাম, ওয়ার্ড নং, বাড়ির নাম বা পরিচিত স্থানের নাম"
                         className="w-full px-3 py-2 text-sm bg-white border border-[#E5E4DF] rounded-lg focus:outline-none focus:border-[#0F6B46]"
                       />
                     </div>
@@ -548,7 +589,7 @@ export function ParcelServiceView({
                 >
                   {submitting
                     ? 'বুকিং পাঠানো হচ্ছে...'
-                    : `পার্সেল বুকিং নিশ্চিত করুন (চার্জ ৳${selectedZone?.charge ?? 100})`}
+                    : `কুরিয়ার সার্ভিস বুকিং নিশ্চিত করুন (চার্জ ৳${selectedZone?.charge ?? 40})`}
                 </button>
               </form>
             )}

@@ -607,16 +607,23 @@
   "deliveryZones": [
     {
       "id": "zone-barlekha",
-      "name": "বড়লেখা উপজেলা",
-      "charge": 100,
-      "estimatedTime": "২–৪ ঘণ্টার মধ্যে ডেলিভারি",
+      "name": "বড়লেখা পৌরসভার ভিতরে",
+      "charge": 40,
+      "estimatedTime": "১–২ ঘণ্টার মধ্যে ডেলিভারি",
       "active": true
     },
     {
-      "id": "zone-nationwide",
-      "name": "সারাদেশে (বাংলাদেশ)",
-      "charge": 150,
-      "estimatedTime": "২৪–৭২ ঘণ্টার মধ্যে কুরিয়ার ডেলিভারি",
+      "id": "zone-barlekha-sadar",
+      "name": "বড়লেখা সদর",
+      "charge": 60,
+      "estimatedTime": "২–৩ ঘণ্টার মধ্যে ডেলিভারি",
+      "active": true
+    },
+    {
+      "id": "zone-others",
+      "name": "অন্যান্য",
+      "charge": 100,
+      "estimatedTime": "৩–৬ ঘণ্টা (উপজেলা) / ২৪–৭২ ঘণ্টা (বাইরে)",
       "active": true
     }
   ],
@@ -641,7 +648,7 @@
     }
   ],
   "banner": {
-    "announcementText": "বড়লেখা উপজেলা ডেলিভারি ৳100 · সারাদেশে ৳150 · ক্যাশ অন ডেলিভারি",
+    "announcementText": "ডেলিভারি চার্জ: বড়লেখা পৌরসভার ভিতরে ৳40 · বড়লেখা সদর ৳60 · অন্যান্য ৳100 · ক্যাশ অন ডেলিভারি",
     "announcementActive": true,
     "heroTitle": "ঘরে বসেই বাজার করুন।",
     "heroSubtitle": "আপনার প্রয়োজনীয় পণ্য অর্ডার করুন, আমরা সংগ্রহ করে নিরাপদে আপনার বাসায় পৌঁছে দেব।",

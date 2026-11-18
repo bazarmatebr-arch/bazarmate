@@ -147,8 +147,8 @@ export function ManualOrderSection({
           </div>
           <div className="space-y-2 text-xs text-[#52525B] tabular-nums">
             <div>
-              ডেলিভারি: বড়লেখা ৳{deliveryZones[0]?.charge ?? 100} · সারাদেশে ৳
-              {deliveryZones[1]?.charge ?? 150}
+              ডেলিভারি: পৌরসভা ৳{deliveryZones[0]?.charge ?? 40} · বড়লেখা সদর ৳
+              {deliveryZones[1]?.charge ?? 60} · অন্যান্য ৳{deliveryZones[2]?.charge ?? 100}
             </div>
             <div className="flex flex-wrap items-center gap-2">
               <a
@@ -439,7 +439,7 @@ export function ManualOrderSection({
               >
                 {submitting
                   ? 'অর্ডার পাঠানো হচ্ছে...'
-                  : `ম্যানুয়াল অর্ডার পাঠান (ডেলিভারি ৳${selectedZone?.charge ?? 100})`}
+                  : `ম্যানুয়াল অর্ডার পাঠান (ডেলিভারি ৳${selectedZone?.charge ?? 40})`}
               </button>
             </div>
           </form>
