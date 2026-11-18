@@ -113,6 +113,8 @@ export interface OrderItem {
   supplierName: string;
   collected: boolean;
   qcPassed: boolean;
+  isCustom?: boolean;
+  customNote?: string;
 }
 
 export interface OrderHistoryEntry {
@@ -135,6 +137,7 @@ export interface OrderFulfillment {
 export interface Order {
   id: string;
   orderNumber: string;
+  orderType?: 'catalog' | 'manual' | 'mixed';
   userId?: string;
   customerName: string;
   customerMobile: string;
@@ -203,3 +206,30 @@ export interface AdminOverviewStats {
   lowStockProducts: Product[];
   estimatedProfit: number;
 }
+
+export type SellerListingStatus = 'Pending' | 'Approved' | 'Rejected';
+
+export interface SellerListing {
+  id: string;
+  userId?: string;
+  sellerName: string;
+  shopName: string;
+  sellerMobile: string;
+  marketArea: string;
+  productName: string;
+  categoryId: string;
+  subCategory: string;
+  brand: string;
+  unit: string;
+  askingPrice: number;
+  suggestedSellingPrice: number;
+  stock: number;
+  description: string;
+  image: string;
+  status: SellerListingStatus;
+  adminNote?: string;
+  publishedProductId?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+

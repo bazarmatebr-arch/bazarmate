@@ -11,6 +11,7 @@ import type {
   Product,
   Review,
   SavedAddress,
+  SellerListing,
   Supplier,
   User,
 } from '../src/types/marketplace.ts';
@@ -29,6 +30,7 @@ export interface DatabaseSchema {
   orders: Order[];
   users: StoredUser[];
   reviews: Review[];
+  sellerListings: SellerListing[];
   orderSeq: number;
 }
 
@@ -733,7 +735,7 @@ function createInitialData(): DatabaseSchema {
     {
       id: 'usr-admin',
       name: 'Bazar Mate Admin',
-      mobile: '01700000000',
+      mobile: '01602507070',
       email: 'admin@bazarmate.bd',
       role: 'admin',
       passwordHash: hashPassword('admin123'),
@@ -937,6 +939,29 @@ function createInitialData(): DatabaseSchema {
     },
   ];
 
+  const sellerListings: SellerListing[] = [
+    {
+      id: 'sell-1001',
+      sellerName: 'সাজিদুর রহমান',
+      shopName: 'গ্রামবাংলা খামার, দক্ষিণভাগ',
+      sellerMobile: '01722334455',
+      marketArea: 'দক্ষিণভাগ, বড়লেখা',
+      productName: 'দেশি পাকা পেঁপে (বাড়ির আঙিনার)',
+      categoryId: 'cat-fresh',
+      subCategory: 'ফলমূল',
+      brand: 'স্থানীয় খামার',
+      unit: '১ কেজি',
+      askingPrice: 70,
+      suggestedSellingPrice: 85,
+      stock: 25,
+      description: 'ফরমালিনমুক্ত সম্পূর্ণ প্রাকৃতিকভাবে পাকা দেশি মিষ্টি পেঁপে।',
+      image: IMG_FRESH,
+      status: 'Pending',
+      createdAt: now,
+      updatedAt: now,
+    },
+  ];
+
   return {
     categories,
     suppliers,
@@ -947,6 +972,7 @@ function createInitialData(): DatabaseSchema {
     orders,
     users,
     reviews,
+    sellerListings,
     orderSeq: 1002,
   };
 }
@@ -966,6 +992,9 @@ export function getDb(): DatabaseSchema {
   try {
     const raw = fs.readFileSync(DB_FILE, 'utf8');
     cachedDb = JSON.parse(raw) as DatabaseSchema;
+    if (!Array.isArray(cachedDb.sellerListings)) {
+      cachedDb.sellerListings = [];
+    }
     return cachedDb;
   } catch {
     cachedDb = createInitialData();

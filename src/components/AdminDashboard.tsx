@@ -2,11 +2,13 @@ import { useEffect, useState } from 'react';
 import {
   BarChart3,
   Boxes,
+  CheckCircle2,
   CheckSquare,
   ClipboardList,
   FolderTree,
   Lock,
   Plus,
+  Printer,
   Settings,
   Store,
   Tag,
@@ -26,19 +28,25 @@ import {
   type Order,
   type OrderStatus,
   type Product,
+  type SellerListing,
+  type SellerListingStatus,
   type Supplier,
   type User,
 } from '../types/marketplace';
+import { ResilientImage } from './ResilientImage';
 
 interface AdminDashboardProps {
   user: User | null;
+  initialSection?: AdminSection;
+  focusOrderNumber?: string;
   onAuthSuccess: (user: User) => void;
   onStorefrontRefresh: () => void;
 }
 
-type AdminSection =
+export type AdminSection =
   | 'overview'
   | 'orders'
+  | 'sellers'
   | 'products'
   | 'categories'
   | 'suppliers'
@@ -48,7 +56,8 @@ type AdminSection =
 
 const SECTION_LABELS: Record<AdminSection, string> = {
   overview: 'ওভারভিউ ও রিপোর্ট',
-  orders: 'অর্ডার ও ফুলফিলমেন্ট',
+  orders: 'অর্ডার ও ফুলফিলমেন্ট প্যানেল',
+  sellers: 'বিক্রেতার আপলোডকৃত পণ্য',
   products: 'পণ্য ও স্টক',
   categories: 'ক্যাটাগরি ও সাব-ক্যাটাগরি',
   suppliers: 'সাপ্লায়ার ম্যানেজমেন্ট',
@@ -59,10 +68,12 @@ const SECTION_LABELS: Record<AdminSection, string> = {
 
 export function AdminDashboard({
   user,
+  initialSection = 'orders',
+  focusOrderNumber,
   onAuthSuccess,
   onStorefrontRefresh,
 }: AdminDashboardProps) {
-  const [section, setSection] = useState<AdminSection>('overview');
+  const [section, setSection] = useState<AdminSection>(initialSection);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
@@ -81,6 +92,7 @@ export function AdminDashboard({
   const [coupons, setCoupons] = useState<Coupon[]>([]);
   const [banner, setBanner] = useState<BannerSettings | null>(null);
   const [customers, setCustomers] = useState<User[]>([]);
+  const [sellerListings, setSellerListings] = useState<SellerListing[]>([]);
 
   // Order Fulfillment selection
   const [orderStatusFilter, setOrderStatusFilter] = useState<string>('ALL');
@@ -88,6 +100,8 @@ export function AdminDashboard({
   const [riderName, setRiderName] = useState('');
   const [riderPhone, setRiderPhone] = useState('');
   const [statusNote, setStatusNote] = useState('');
+  const [showMasterProcurement, setShowMasterProcurement] = useState(false);
+  const [showPackingSlip, setShowPackingSlip] = useState(false);
 
   // Product Form
   const [editingProductId, setEditingProductId] = useState<string | null>(null);
@@ -152,11 +166,20 @@ export function AdminDashboard({
       setCoupons(data.coupons);
       setBanner(data.banner);
       setCustomers(data.customers);
-      if (data.orders.length > 0 && !selectedOrder) {
-        const first = data.orders[0];
-        setSelectedOrder(first);
-        setRiderName(first.fulfillment.deliveryRiderName || '');
-        setRiderPhone(first.fulfillment.deliveryRiderPhone || '');
+      setSellerListings(data.sellerListings || []);
+      if (data.orders.length > 0) {
+        const focused = focusOrderNumber
+          ? data.orders.find((o) => o.orderNumber === focusOrderNumber)
+          : null;
+        const target =
+          focused ||
+          (selectedOrder ? data.orders.find((o) => o.id === selectedOrder.id) : null) ||
+          data.orders[0];
+        if (target) {
+          setSelectedOrder(target);
+          setRiderName(target.fulfillment.deliveryRiderName || '');
+          setRiderPhone(target.fulfillment.deliveryRiderPhone || '');
+        }
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'অ্যাডমিন ডেটা লোড করা যায়নি।');
@@ -166,10 +189,22 @@ export function AdminDashboard({
   }
 
   useEffect(() => {
+    setSection(initialSection);
+  }, [initialSection]);
+
+  useEffect(() => {
     if (user?.role === 'admin') {
       loadDashboard();
     }
-  }, [user]);
+  }, [user, focusOrderNumber]);
+
+  useEffect(() => {
+    if (user?.role !== 'admin' || section !== 'orders') return;
+    const timer = setInterval(() => {
+      loadDashboard();
+    }, 15000);
+    return () => clearInterval(timer);
+  }, [user, section]);
 
   async function handleAdminLogin(e: React.FormEvent) {
     e.preventDefault();
@@ -388,9 +423,16 @@ export function AdminDashboard({
       ? orders
       : orders.filter((o) => o.status === orderStatusFilter);
 
+  const pendingSellerCount = sellerListings.filter((s) => s.status === 'Pending').length;
+
   const navItems: { id: AdminSection; label: string; icon: typeof BarChart3 }[] = [
     { id: 'overview', label: 'ওভারভিউ ও রিপোর্ট', icon: BarChart3 },
     { id: 'orders', label: 'অর্ডার ও ফুলফিলমেন্ট', icon: ClipboardList },
+    {
+      id: 'sellers',
+      label: pendingSellerCount > 0 ? `বিক্রেতা পণ্য (${pendingSellerCount})` : 'বিক্রেতা পণ্য',
+      icon: Store,
+    },
     { id: 'products', label: 'পণ্য ও স্টক', icon: Boxes },
     { id: 'categories', label: 'ক্যাটাগরি', icon: FolderTree },
     { id: 'suppliers', label: 'সাপ্লায়ার', icon: Store },
@@ -591,25 +633,154 @@ export function AdminDashboard({
           )}
 
           {/* 2. ORDERS & 9-STAGE FULFILLMENT */}
-          {section === 'orders' && (
+          {section === 'orders' && (() => {
+            const activeProcurementOrders = orders.filter((o) =>
+              ['Pending', 'Confirmed', 'Processing'].includes(o.status),
+            );
+            const masterSupplierQueue = activeProcurementOrders.reduce<
+              Record<
+                string,
+                {
+                  supplierName: string;
+                  marketArea: string;
+                  mobile: string;
+                  lines: {
+                    productId: string;
+                    productName: string;
+                    unit: string;
+                    totalQty: number;
+                    orderNumbers: string[];
+                  }[];
+                }
+              >
+            >((acc, ord) => {
+              for (const item of ord.items) {
+                if (!acc[item.supplierId]) {
+                  const sup = suppliers.find((s) => s.id === item.supplierId);
+                  acc[item.supplierId] = {
+                    supplierName: item.supplierName,
+                    marketArea: sup?.marketArea || 'বড়লেখা বাজার',
+                    mobile: sup?.mobile || '',
+                    lines: [],
+                  };
+                }
+                const existingLine = acc[item.supplierId].lines.find(
+                  (l) => l.productId === item.productId,
+                );
+                if (existingLine) {
+                  existingLine.totalQty += item.quantity;
+                  if (!existingLine.orderNumbers.includes(ord.orderNumber)) {
+                    existingLine.orderNumbers.push(ord.orderNumber);
+                  }
+                } else {
+                  acc[item.supplierId].lines.push({
+                    productId: item.productId,
+                    productName: item.productName,
+                    unit: item.unit,
+                    totalQty: item.quantity,
+                    orderNumbers: [ord.orderNumber],
+                  });
+                }
+              }
+              return acc;
+            }, {});
+
+            return (
             <div className="space-y-5">
-              {/* Status Filter */}
-              <div className="flex flex-wrap gap-1.5">
-                {['ALL', ...ORDER_STATUS_FLOW].map((st) => (
-                  <button
-                    key={st}
-                    type="button"
-                    onClick={() => setOrderStatusFilter(st)}
-                    className={`px-3 py-1.5 text-xs font-semibold rounded-lg border transition-colors ${
-                      orderStatusFilter === st
-                        ? 'bg-[#0F6B46] text-white border-[#0F6B46]'
-                        : 'bg-white text-[#52525B] border-[#E5E4DF] hover:text-[#18181B]'
-                    }`}
-                  >
-                    {st === 'ALL' ? `সব (${orders.length})` : st}
-                  </button>
-                ))}
+              {/* Top Operational Toolbar + Status Filter */}
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div className="flex flex-wrap gap-1.5">
+                  {['ALL', ...ORDER_STATUS_FLOW].map((st) => {
+                    const count =
+                      st === 'ALL'
+                        ? orders.length
+                        : orders.filter((o) => o.status === st).length;
+                    return (
+                      <button
+                        key={st}
+                        type="button"
+                        onClick={() => setOrderStatusFilter(st)}
+                        className={`px-3 py-1.5 text-xs font-semibold rounded-lg border transition-colors ${
+                          orderStatusFilter === st
+                            ? 'bg-[#0F6B46] text-white border-[#0F6B46]'
+                            : 'bg-white text-[#52525B] border-[#E5E4DF] hover:text-[#18181B]'
+                        }`}
+                      >
+                        {st === 'ALL' ? `সব (${count})` : `${st} (${count})`}
+                      </button>
+                    );
+                  })}
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setShowMasterProcurement((v) => !v)}
+                  className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold rounded-lg border border-[#0F6B46] text-[#0F6B46] bg-white hover:bg-[#0F6B46]/5 whitespace-nowrap"
+                >
+                  <Store className="w-3.5 h-3.5" />
+                  <span>
+                    {showMasterProcurement
+                      ? 'সম্মিলিত বাজার তালিকা বন্ধ করুন'
+                      : `আজকের সম্মিলিত সাপ্লায়ার তালিকা (${activeProcurementOrders.length} অর্ডার)`}
+                  </span>
+                </button>
               </div>
+
+              {/* Consolidated Master Procurement Sheet across all active orders */}
+              {showMasterProcurement && (
+                <div className="bg-white border border-[#0F6B46]/40 rounded-xl p-5 space-y-4">
+                  <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[#F0EFEA] pb-3">
+                    <div>
+                      <h3 className="text-sm font-bold text-[#18181B]">
+                        সকল চলমান অর্ডার মিলিয়ে সাপ্লায়ার সংগ্রহ তালিকা (Pending / Confirmed / Processing)
+                      </h3>
+                      <p className="text-xs text-[#52525B]">
+                        কোন দোকান থেকে মোট কতগুলো পণ্য আনতে হবে তার একত্রিত হিসাব
+                      </p>
+                    </div>
+                    <span className="text-xs font-mono-tabular font-semibold text-[#0F6B46]">
+                      {Object.keys(masterSupplierQueue).length}টি দোকান
+                    </span>
+                  </div>
+
+                  {Object.keys(masterSupplierQueue).length === 0 ? (
+                    <p className="text-xs text-[#52525B] py-4 text-center">
+                      বর্তমানে সংগ্রহের অপেক্ষায় কোনো নতুন অর্ডার নেই।
+                    </p>
+                  ) : (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      {Object.entries(masterSupplierQueue).map(([supId, grp]) => (
+                        <div
+                          key={supId}
+                          className="border border-[#E5E4DF] rounded-lg p-3.5 bg-[#FAF9F6] space-y-2"
+                        >
+                          <div className="flex items-center justify-between gap-2 text-xs border-b border-[#E5E4DF] pb-2">
+                            <span className="font-bold text-[#18181B]">{grp.supplierName}</span>
+                            <span className="text-[#52525B] font-mono-tabular">
+                              {grp.marketArea} · {grp.mobile}
+                            </span>
+                          </div>
+                          <ul className="space-y-1.5 text-xs">
+                            {grp.lines.map((line) => (
+                              <li
+                                key={line.productId}
+                                className="flex items-center justify-between gap-2"
+                              >
+                                <span className="text-[#18181B]">
+                                  {line.productName} ({line.unit})
+                                </span>
+                                <span className="font-mono-tabular font-bold text-[#0F6B46] shrink-0">
+                                  মোট × {line.totalQty} ({line.orderNumbers.join(', ')})
+                                </span>
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
 
               <div className="grid grid-cols-1 xl:grid-cols-12 gap-6">
                 {/* Order Table */}
@@ -683,10 +854,37 @@ export function AdminDashboard({
                             </p>
                           )}
                         </div>
-                        <div className="text-right tabular-nums">
-                          <div className="text-xs text-[#52525B]">বর্তমান স্ট্যাটাস</div>
-                          <div className="text-sm font-bold text-[#0F6B46]">
-                            {ORDER_STATUS_BN[selectedOrder.status]}
+                        <div className="flex flex-col items-end gap-2 tabular-nums">
+                          <div className="text-right">
+                            <div className="text-xs text-[#52525B]">বর্তমান স্ট্যাটাস</div>
+                            <div className="text-sm font-bold text-[#0F6B46]">
+                              {ORDER_STATUS_BN[selectedOrder.status]}
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            {selectedOrder.status === 'Pending' && (
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  handleOrderUpdate(selectedOrder, {
+                                    status: 'Confirmed',
+                                    note: 'অর্ডার কনফার্ম করা হয়েছে',
+                                  })
+                                }
+                                className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-semibold rounded-lg bg-[#0F6B46] text-white hover:bg-[#0B5235]"
+                              >
+                                <CheckCircle2 className="w-3.5 h-3.5" />
+                                <span>অর্ডার কনফার্ম করুন</span>
+                              </button>
+                            )}
+                            <button
+                              type="button"
+                              onClick={() => setShowPackingSlip(true)}
+                              className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-semibold rounded-lg border border-[#E5E4DF] bg-[#FAF9F6] text-[#18181B] hover:bg-[#F3F2EE]"
+                            >
+                              <Printer className="w-3.5 h-3.5" />
+                              <span>প্যাকিং স্লিপ</span>
+                            </button>
                           </div>
                         </div>
                       </div>
@@ -720,50 +918,132 @@ export function AdminDashboard({
                                 {group.items.map((item) => (
                                   <div
                                     key={item.productId}
-                                    className="flex flex-wrap items-center justify-between gap-3 bg-white border border-[#E5E4DF] rounded-md px-3 py-2 text-xs"
+                                    className="space-y-2 bg-white border border-[#E5E4DF] rounded-md px-3 py-2.5 text-xs"
                                   >
-                                    <div>
-                                      <span className="font-medium text-[#18181B]">
-                                        {item.productName} ({item.unit}) × {item.quantity}
-                                      </span>
-                                      <span className="ml-2 text-[#52525B] font-mono-tabular">
-                                        কেনা: ৳{item.purchasePrice} | বিক্রি: ৳{item.price}
-                                      </span>
+                                    <div className="flex flex-wrap items-center justify-between gap-3">
+                                      <div>
+                                        <span className="font-medium text-[#18181B]">
+                                          {item.productName} ({item.unit}) × {item.quantity}
+                                        </span>
+                                        {item.isCustom && (
+                                          <span className="ml-2 text-[#D97706] font-semibold">
+                                            · ম্যানুয়াল ফর্দ
+                                          </span>
+                                        )}
+                                        <span className="ml-2 text-[#52525B] font-mono-tabular">
+                                          কেনা: ৳{item.purchasePrice} | বিক্রি: ৳{item.price}
+                                        </span>
+                                      </div>
+                                      <div className="flex items-center gap-3">
+                                        <label className="inline-flex items-center gap-1.5 cursor-pointer">
+                                          <input
+                                            type="checkbox"
+                                            checked={item.collected}
+                                            onChange={(e) => {
+                                              const nextItems = selectedOrder.items.map((x) =>
+                                                x.productId === item.productId
+                                                  ? { ...x, collected: e.target.checked }
+                                                  : x,
+                                              );
+                                              handleOrderUpdate(selectedOrder, { items: nextItems });
+                                            }}
+                                            className="accent-[#0F6B46]"
+                                          />
+                                          <span>সংগৃহীত</span>
+                                        </label>
+                                        <label className="inline-flex items-center gap-1.5 cursor-pointer">
+                                          <input
+                                            type="checkbox"
+                                            checked={item.qcPassed}
+                                            onChange={(e) => {
+                                              const nextItems = selectedOrder.items.map((x) =>
+                                                x.productId === item.productId
+                                                  ? { ...x, qcPassed: e.target.checked }
+                                                  : x,
+                                              );
+                                              handleOrderUpdate(selectedOrder, { items: nextItems });
+                                            }}
+                                            className="accent-[#0F6B46]"
+                                          />
+                                          <span>QC পাস</span>
+                                        </label>
+                                      </div>
                                     </div>
-                                    <div className="flex items-center gap-3">
-                                      <label className="inline-flex items-center gap-1.5 cursor-pointer">
-                                        <input
-                                          type="checkbox"
-                                          checked={item.collected}
+
+                                    {item.isCustom && (
+                                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 pt-2 border-t border-[#F0EFEA]">
+                                        <select
+                                          value={item.supplierId}
                                           onChange={(e) => {
+                                            const sup = suppliers.find((s) => s.id === e.target.value);
                                             const nextItems = selectedOrder.items.map((x) =>
                                               x.productId === item.productId
-                                                ? { ...x, collected: e.target.checked }
+                                                ? {
+                                                    ...x,
+                                                    supplierId: e.target.value,
+                                                    supplierName:
+                                                      sup?.shopName || 'ম্যানুয়াল সংগ্রহ',
+                                                  }
                                                 : x,
                                             );
                                             handleOrderUpdate(selectedOrder, { items: nextItems });
                                           }}
-                                          className="accent-[#0F6B46]"
-                                        />
-                                        <span>সংগৃহীত</span>
-                                      </label>
-                                      <label className="inline-flex items-center gap-1.5 cursor-pointer">
-                                        <input
-                                          type="checkbox"
-                                          checked={item.qcPassed}
-                                          onChange={(e) => {
-                                            const nextItems = selectedOrder.items.map((x) =>
-                                              x.productId === item.productId
-                                                ? { ...x, qcPassed: e.target.checked }
-                                                : x,
-                                            );
-                                            handleOrderUpdate(selectedOrder, { items: nextItems });
-                                          }}
-                                          className="accent-[#0F6B46]"
-                                        />
-                                        <span>QC পাস</span>
-                                      </label>
-                                    </div>
+                                          className="px-2 py-1 text-xs bg-[#FAF9F6] border border-[#E5E4DF] rounded"
+                                        >
+                                          {suppliers.map((s) => (
+                                            <option key={s.id} value={s.id}>
+                                              {s.shopName}
+                                            </option>
+                                          ))}
+                                        </select>
+                                        <div className="flex items-center gap-1.5">
+                                          <span className="text-[11px] text-[#52525B] shrink-0">
+                                            কেনা ৳
+                                          </span>
+                                          <input
+                                            type="number"
+                                            defaultValue={item.purchasePrice}
+                                            onBlur={(e) => {
+                                              const val = Number(e.target.value) || 0;
+                                              if (val !== item.purchasePrice) {
+                                                const nextItems = selectedOrder.items.map((x) =>
+                                                  x.productId === item.productId
+                                                    ? { ...x, purchasePrice: val }
+                                                    : x,
+                                                );
+                                                handleOrderUpdate(selectedOrder, {
+                                                  items: nextItems,
+                                                });
+                                              }
+                                            }}
+                                            className="w-full px-2 py-1 text-xs font-mono-tabular border border-[#E5E4DF] rounded"
+                                          />
+                                        </div>
+                                        <div className="flex items-center gap-1.5">
+                                          <span className="text-[11px] text-[#52525B] shrink-0">
+                                            বিক্রি ৳
+                                          </span>
+                                          <input
+                                            type="number"
+                                            defaultValue={item.price}
+                                            onBlur={(e) => {
+                                              const val = Number(e.target.value) || 0;
+                                              if (val !== item.price) {
+                                                const nextItems = selectedOrder.items.map((x) =>
+                                                  x.productId === item.productId
+                                                    ? { ...x, price: val }
+                                                    : x,
+                                                );
+                                                handleOrderUpdate(selectedOrder, {
+                                                  items: nextItems,
+                                                });
+                                              }
+                                            }}
+                                            className="w-full px-2 py-1 text-xs font-mono-tabular border border-[#E5E4DF] rounded"
+                                          />
+                                        </div>
+                                      </div>
+                                    )}
                                   </div>
                                 ))}
                               </div>
@@ -891,8 +1171,103 @@ export function AdminDashboard({
                   )}
                 </div>
               </div>
+
+              {/* Printable Packing Slip / Invoice Modal */}
+              {showPackingSlip && selectedOrder && (
+                <div
+                  className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+                  role="dialog"
+                  aria-modal="true"
+                  aria-label="প্যাকিং স্লিপ"
+                >
+                  <div className="w-full max-w-lg bg-white border border-[#E5E4DF] rounded-xl p-6 space-y-4 shadow-2xl">
+                    <div className="flex items-start justify-between border-b border-[#E5E4DF] pb-3">
+                      <div>
+                        <h3 className="text-lg font-bold text-[#0F6B46]">Bazar Mate — প্যাকিং স্লিপ</h3>
+                        <p className="text-xs text-[#52525B]">বড়লেখা, সিলেট · Cash on Delivery</p>
+                      </div>
+                      <span className="text-sm font-mono-tabular font-bold text-[#18181B]">
+                        {selectedOrder.orderNumber}
+                      </span>
+                    </div>
+
+                    <div className="text-xs space-y-1 bg-[#FAF9F6] p-3 rounded-lg border border-[#E5E4DF]">
+                      <div className="font-semibold text-[#18181B]">
+                        ক্রেতা: {selectedOrder.customerName} ({selectedOrder.customerMobile})
+                      </div>
+                      <div className="text-[#52525B]">ঠিকানা: {selectedOrder.deliveryAddress}</div>
+                      {selectedOrder.orderNote && (
+                        <div className="text-[#D97706]">নোট: {selectedOrder.orderNote}</div>
+                      )}
+                    </div>
+
+                    <table className="w-full text-xs text-left border-t border-b border-[#E5E4DF]">
+                      <thead>
+                        <tr className="text-[#52525B] border-b border-[#E5E4DF]">
+                          <th className="py-2 font-semibold">পণ্য</th>
+                          <th className="py-2 font-semibold text-right">পরিমাণ</th>
+                          <th className="py-2 font-semibold text-right">মূল্য</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-[#F0EFEA]">
+                        {selectedOrder.items.map((item) => (
+                          <tr key={item.productId}>
+                            <td className="py-2">
+                              {item.productName} ({item.unit})
+                            </td>
+                            <td className="py-2 text-right font-mono-tabular">{item.quantity}</td>
+                            <td className="py-2 text-right font-mono-tabular">
+                              ৳{(item.price * item.quantity).toLocaleString('en-US')}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+
+                    <div className="space-y-1 text-xs tabular-nums">
+                      <div className="flex justify-between text-[#52525B]">
+                        <span>সাবটোটাল</span>
+                        <span>৳{selectedOrder.subtotal.toLocaleString('en-US')}</span>
+                      </div>
+                      {selectedOrder.discount > 0 && (
+                        <div className="flex justify-between text-[#0F6B46]">
+                          <span>ডিসকাউন্ট</span>
+                          <span>-৳{selectedOrder.discount.toLocaleString('en-US')}</span>
+                        </div>
+                      )}
+                      <div className="flex justify-between text-[#52525B]">
+                        <span>ডেলিভারি চার্জ</span>
+                        <span>৳{selectedOrder.deliveryCharge.toLocaleString('en-US')}</span>
+                      </div>
+                      <div className="flex justify-between text-sm font-bold text-[#18181B] pt-1 border-t border-[#E5E4DF]">
+                        <span>ক্রেতা থেকে আদায়যোগ্য (COD)</span>
+                        <span>৳{selectedOrder.totalAmount.toLocaleString('en-US')}</span>
+                      </div>
+                    </div>
+
+                    <div className="flex justify-end gap-2 pt-2">
+                      <button
+                        type="button"
+                        onClick={() => window.print()}
+                        className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-semibold rounded-lg bg-[#0F6B46] text-white hover:bg-[#0B5235]"
+                      >
+                        <Printer className="w-3.5 h-3.5" />
+                        <span>প্রিন্ট করুন</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setShowPackingSlip(false)}
+                        className="px-4 py-2 text-xs font-semibold rounded-lg border border-[#E5E4DF] hover:bg-[#F3F2EE]"
+                      >
+                        বন্ধ করুন
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
-          )}
+            );
+          })()}
 
           {/* 3. PRODUCTS MANAGEMENT */}
           {section === 'products' && (
@@ -1630,6 +2005,189 @@ export function AdminDashboard({
                   ))}
                 </tbody>
               </table>
+            </div>
+          )}
+
+          {/* 9. SELLER SUBMITTED PRODUCTS APPROVAL */}
+          {section === 'sellers' && (
+            <div className="space-y-4">
+              <div className="bg-white border border-[#E5E4DF] rounded-xl p-4 sm:p-5 flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <h2 className="text-sm font-bold text-[#18181B]">
+                    বিক্রেতাদের আপলোডকৃত পণ্য যাচাই ও প্রকাশ
+                  </h2>
+                  <p className="text-xs text-[#52525B]">
+                    বিক্রেতারা যে পণ্য ও দাম আপলোড করেছেন তা যাচাই করে অনুমোদন দিলে সরাসরি স্টোরে ও সাপ্লায়ার তালিকায় যুক্ত হবে।
+                  </p>
+                </div>
+                <span className="text-xs font-mono-tabular text-[#52525B]">
+                  মোট আবেদন: {sellerListings.length} · অপেক্ষমাণ: {pendingSellerCount}
+                </span>
+              </div>
+
+              {sellerListings.length === 0 ? (
+                <div className="bg-white border border-[#E5E4DF] rounded-xl p-10 text-center text-sm text-[#52525B]">
+                  এখনো কোনো বিক্রেতা পণ্য আপলোড করেননি।
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {sellerListings.map((item) => {
+                    const cat = categories.find((c) => c.id === item.categoryId);
+                    const statusLabel: Record<SellerListingStatus, string> = {
+                      Pending: 'অপেক্ষমাণ',
+                      Approved: 'অনুমোদিত (স্টোরে প্রকাশিত)',
+                      Rejected: 'বাতিলকৃত',
+                    };
+                    return (
+                      <div
+                        key={item.id}
+                        className="bg-white border border-[#E5E4DF] rounded-xl p-4 sm:p-5 flex flex-col lg:flex-row gap-4 justify-between"
+                      >
+                        <div className="flex gap-4 min-w-0 flex-1">
+                          <div className="w-24 h-20 rounded-lg overflow-hidden bg-[#F3F2EE] border border-[#E5E4DF] shrink-0">
+                            <ResilientImage
+                              src={item.image}
+                              alt={item.productName}
+                              className="w-full h-full object-cover"
+                            />
+                          </div>
+                          <div className="min-w-0 space-y-1 text-xs">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <span className="text-sm font-bold text-[#18181B]">
+                                {item.productName}
+                              </span>
+                              <span aria-hidden="true">·</span>
+                              <span className="text-[#52525B]">{item.unit}</span>
+                              <span aria-hidden="true">·</span>
+                              <span
+                                className={`font-semibold ${
+                                  item.status === 'Approved'
+                                    ? 'text-[#0F6B46]'
+                                    : item.status === 'Rejected'
+                                      ? 'text-[#DC2626]'
+                                      : 'text-[#D97706]'
+                                }`}
+                              >
+                                {statusLabel[item.status]}
+                              </span>
+                            </div>
+                            <div className="text-[#52525B]">
+                              ক্যাটাগরি: {cat?.nameBn || item.categoryId} ({item.subCategory}) · ব্র্যান্ড:{' '}
+                              {item.brand}
+                            </div>
+                            <div className="text-[#3F3F46] font-mono-tabular">
+                              বিক্রেতা: {item.sellerName} ({item.shopName}) · {item.sellerMobile} ·{' '}
+                              {item.marketArea}
+                            </div>
+                            {item.description && (
+                              <p className="text-[#52525B] line-clamp-2">{item.description}</p>
+                            )}
+                          </div>
+                        </div>
+
+                        <div className="flex flex-wrap lg:flex-nowrap items-end gap-2.5 shrink-0">
+                          <div>
+                            <label className="block text-[10px] text-[#52525B] mb-0.5">
+                              কেনা দাম ৳
+                            </label>
+                            <input
+                              type="number"
+                              defaultValue={item.askingPrice}
+                              onBlur={async (e) => {
+                                const val = Number(e.target.value);
+                                if (val > 0 && val !== item.askingPrice) {
+                                  await api.reviewSellerListing(item.id, { purchasePrice: val });
+                                  await loadDashboard();
+                                  flashSaved('বিক্রেতার দাম আপডেট হয়েছে');
+                                }
+                              }}
+                              className="w-20 px-2 py-1.5 text-xs border border-[#E5E4DF] rounded-lg tabular-nums"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-[10px] text-[#52525B] mb-0.5">
+                              বিক্রয় মূল্য ৳
+                            </label>
+                            <input
+                              type="number"
+                              defaultValue={item.suggestedSellingPrice}
+                              onBlur={async (e) => {
+                                const val = Number(e.target.value);
+                                if (val > 0 && val !== item.suggestedSellingPrice) {
+                                  await api.reviewSellerListing(item.id, { sellingPrice: val });
+                                  await loadDashboard();
+                                  onStorefrontRefresh();
+                                  flashSaved('বিক্রয় মূল্য আপডেট হয়েছে');
+                                }
+                              }}
+                              className="w-20 px-2 py-1.5 text-xs border border-[#E5E4DF] rounded-lg tabular-nums"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-[10px] text-[#52525B] mb-0.5">স্টক</label>
+                            <input
+                              type="number"
+                              defaultValue={item.stock}
+                              onBlur={async (e) => {
+                                const val = Number(e.target.value);
+                                if (val >= 0 && val !== item.stock) {
+                                  await api.reviewSellerListing(item.id, { stock: val });
+                                  await loadDashboard();
+                                  onStorefrontRefresh();
+                                  flashSaved('স্টক আপডেট হয়েছে');
+                                }
+                              }}
+                              className="w-16 px-2 py-1.5 text-xs border border-[#E5E4DF] rounded-lg tabular-nums"
+                            />
+                          </div>
+
+                          <div className="flex items-center gap-2">
+                            {item.status !== 'Approved' && (
+                              <button
+                                type="button"
+                                onClick={async () => {
+                                  await api.reviewSellerListing(item.id, { status: 'Approved' });
+                                  await loadDashboard();
+                                  onStorefrontRefresh();
+                                  flashSaved('পণ্যটি স্টোরে প্রকাশ করা হয়েছে');
+                                }}
+                                className="px-3 py-2 text-xs font-semibold rounded-lg bg-[#0F6B46] text-white hover:bg-[#0B5235] whitespace-nowrap"
+                              >
+                                অনুমোদন ও প্রকাশ
+                              </button>
+                            )}
+                            {item.status !== 'Rejected' && (
+                              <button
+                                type="button"
+                                onClick={async () => {
+                                  await api.reviewSellerListing(item.id, { status: 'Rejected' });
+                                  await loadDashboard();
+                                  flashSaved('আবেদন বাতিল করা হয়েছে');
+                                }}
+                                className="px-3 py-2 text-xs font-semibold rounded-lg border border-[#E5E4DF] text-[#DC2626] hover:bg-[#FEF2F2] whitespace-nowrap"
+                              >
+                                বাতিল
+                              </button>
+                            )}
+                            <button
+                              type="button"
+                              onClick={async () => {
+                                await api.deleteSellerListing(item.id);
+                                await loadDashboard();
+                                flashSaved('তালিকা থেকে মুছে ফেলা হয়েছে');
+                              }}
+                              aria-label="মুছুন"
+                              className="p-2 rounded-lg border border-[#E5E4DF] text-[#71717A] hover:text-[#DC2626]"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
           )}
         </div>

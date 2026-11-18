@@ -1,6 +1,19 @@
 import { useEffect, useState } from 'react';
-import { Check, PackageCheck, Search, Truck, UserCheck } from 'lucide-react';
+import {
+  Check,
+  MessageCircle,
+  PackageCheck,
+  Phone,
+  Search,
+  Truck,
+  UserCheck,
+} from 'lucide-react';
 import { api } from '../lib/api';
+import {
+  OFFICIAL_PHONE,
+  OFFICIAL_PHONE_TEL,
+  OFFICIAL_WHATSAPP_URL,
+} from '../lib/contact';
 import { ORDER_STATUS_BN, type Order, type OrderStatus } from '../types/marketplace';
 
 interface OrderTrackingViewProps {
@@ -52,13 +65,33 @@ export function OrderTrackingView({ initialOrderNumber = '' }: OrderTrackingView
 
   return (
     <section className="max-w-4xl mx-auto px-4 sm:px-6 py-8 sm:py-12 space-y-8">
-      <div className="space-y-2">
-        <h1 className="text-2xl sm:text-3xl font-bold text-[#18181B]">
-          লাইভ অর্ডার ট্র্যাকিং
-        </h1>
-        <p className="text-sm text-[#52525B]">
-          আপনার অর্ডার নম্বর দিয়ে সংগ্রহ, মান যাচাই, প্যাকিং ও ডেলিভারির বর্তমান অবস্থা জানুন।
-        </p>
+      <div className="flex flex-wrap items-end justify-between gap-4">
+        <div className="space-y-2">
+          <h1 className="text-2xl sm:text-3xl font-bold text-[#18181B]">
+            লাইভ অর্ডার ট্র্যাকিং
+          </h1>
+          <p className="text-sm text-[#52525B]">
+            আপনার অর্ডার নম্বর দিয়ে সংগ্রহ, মান যাচাই, প্যাকিং ও ডেলিভারির বর্তমান অবস্থা জানুন।
+          </p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2 text-xs">
+          <a
+            href={OFFICIAL_PHONE_TEL}
+            className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-[#E5E4DF] bg-white text-[#18181B] font-mono-tabular font-semibold hover:border-[#0F6B46]"
+          >
+            <Phone className="w-3.5 h-3.5 text-[#0F6B46]" />
+            <span>{OFFICIAL_PHONE}</span>
+          </a>
+          <a
+            href={OFFICIAL_WHATSAPP_URL}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-[#0F6B46]/30 bg-[#0F6B46]/5 text-[#0F6B46] font-semibold hover:bg-[#0F6B46]/10"
+          >
+            <MessageCircle className="w-3.5 h-3.5" />
+            <span>হোয়াটসঅ্যাপ: {OFFICIAL_PHONE}</span>
+          </a>
+        </div>
       </div>
 
       {/* Search Form */}
@@ -137,7 +170,7 @@ export function OrderTrackingView({ initialOrderNumber = '' }: OrderTrackingView
 
           {order.status === 'Cancelled' ? (
             <div className="p-4 rounded-lg bg-[#FEF2F2] border border-[#FECACA] text-sm text-[#DC2626]">
-              এই অর্ডারটি বাতিল করা হয়েছে। প্রয়োজনে বড়লেখা সাপোর্ট নম্বরে যোগাযোগ করুন।
+              এই অর্ডারটি বাতিল করা হয়েছে। প্রয়োজনে বড়লেখা সাপোর্ট নম্বরে ({OFFICIAL_PHONE}) কল বা হোয়াটসঅ্যাপ করুন।
             </div>
           ) : (
             <div className="grid grid-cols-2 sm:grid-cols-7 gap-3">

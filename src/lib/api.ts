@@ -10,6 +10,8 @@ import type {
   Product,
   Review,
   SavedAddress,
+  SellerListing,
+  SellerListingStatus,
   StorePublicData,
   Supplier,
   User,
@@ -114,7 +116,8 @@ export const api = {
     deliveryAddress: string;
     orderNote: string;
     couponCode?: string;
-    items: { productId: string; quantity: number }[];
+    items?: { productId: string; quantity: number }[];
+    customItems?: { name: string; unit?: string; quantity?: number; note?: string }[];
   }) =>
     request<Order>('/api/orders', {
       method: 'POST',
@@ -141,6 +144,7 @@ export const api = {
       coupons: Coupon[];
       banner: BannerSettings;
       customers: User[];
+      sellerListings: SellerListing[];
     }>('/api/admin/dashboard'),
 
   createProduct: (payload: Partial<Product>) =>
@@ -234,6 +238,57 @@ export const api = {
 
   deleteCoupon: (id: string) =>
     request<{ ok: boolean }>(`/api/admin/coupons/${id}`, {
+      method: 'DELETE',
+    }),
+
+  // Seller Product Submissions
+  submitSellerListing: (payload: {
+    sellerName: string;
+    shopName?: string;
+    sellerMobile: string;
+    marketArea: string;
+    productName: string;
+    categoryId: string;
+    subCategory: string;
+    brand?: string;
+    unit: string;
+    askingPrice: number;
+    suggestedSellingPrice?: number;
+    stock: number;
+    description: string;
+    image?: string;
+  }) =>
+    request<SellerListing>('/api/seller-listings', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+
+  getMySellerListings: () => request<SellerListing[]>('/api/seller-listings/my'),
+
+  lookupSellerListingsByMobile: (mobile: string) =>
+    request<SellerListing[]>(
+      `/api/seller-listings/lookup?mobile=${encodeURIComponent(mobile.trim())}`,
+    ),
+
+  reviewSellerListing: (
+    id: string,
+    payload: {
+      status?: SellerListingStatus;
+      sellingPrice?: number;
+      purchasePrice?: number;
+      stock?: number;
+      categoryId?: string;
+      subCategory?: string;
+      adminNote?: string;
+    },
+  ) =>
+    request<{ listing: SellerListing; product?: Product }>(`/api/admin/seller-listings/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(payload),
+    }),
+
+  deleteSellerListing: (id: string) =>
+    request<{ ok: boolean }>(`/api/admin/seller-listings/${id}`, {
       method: 'DELETE',
     }),
 };

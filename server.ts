@@ -23,6 +23,8 @@ import type {
   OrderStatus,
   Product,
   Review,
+  SellerListing,
+  SellerListingStatus,
   Supplier,
 } from './src/types/marketplace.ts';
 
@@ -60,7 +62,7 @@ function requireAdmin(req: AuthRequest, res: Response, next: NextFunction) {
 
 async function startServer() {
   const app = express();
-  app.use(express.json({ limit: '2mb' }));
+  app.use(express.json({ limit: '5mb' }));
   app.use(attachAuth);
 
   // Health check
@@ -253,7 +255,7 @@ async function startServer() {
     res.json({ coupon, discount: Math.min(sub, discount) });
   });
 
-  // Create Order (Guest or Authenticated)
+  // Create Order (Guest or Authenticated - supports catalog items and/or manual custom items)
   app.post('/api/orders', (req: AuthRequest, res) => {
     const db = getDb();
     const {
@@ -265,6 +267,7 @@ async function startServer() {
       orderNote,
       couponCode,
       items,
+      customItems,
     } = req.body as {
       customerName?: string;
       customerMobile?: string;
@@ -274,10 +277,23 @@ async function startServer() {
       orderNote?: string;
       couponCode?: string;
       items?: { productId: string; quantity: number }[];
+      customItems?: { name: string; unit?: string; quantity?: number; note?: string }[];
     };
 
-    if (!customerName || !customerMobile || !deliveryAddress || !items?.length) {
-      res.status(400).json({ error: 'অনুগ্রহ করে নাম, মোবাইল নম্বর, ঠিকানা এবং অন্তত একটি পণ্য যোগ করুন।' });
+    const validCatalogItems = Array.isArray(items) ? items : [];
+    const validCustomItems = Array.isArray(customItems)
+      ? customItems.filter((c) => c && typeof c.name === 'string' && c.name.trim().length > 0)
+      : [];
+
+    if (
+      !customerName ||
+      !customerMobile ||
+      !deliveryAddress ||
+      (validCatalogItems.length === 0 && validCustomItems.length === 0)
+    ) {
+      res.status(400).json({
+        error: 'অনুগ্রহ করে নাম, মোবাইল নম্বর, ঠিকানা এবং অন্তত একটি পণ্য লিখুন বা যোগ করুন।',
+      });
       return;
     }
 
@@ -291,7 +307,7 @@ async function startServer() {
     const orderItems: OrderItem[] = [];
     let subtotal = 0;
 
-    for (const reqItem of items) {
+    for (const reqItem of validCatalogItems) {
       const product = db.products.find((p) => p.id === reqItem.productId && p.active);
       if (!product) {
         res.status(400).json({ error: `পণ্যটি পাওয়া যায়নি (${reqItem.productId})।` });
@@ -320,6 +336,26 @@ async function startServer() {
       product.stock -= qty;
     }
 
+    const defaultSupplier = db.suppliers[0];
+    validCustomItems.forEach((cItem, idx) => {
+      const qty = Math.max(1, Math.floor(Number(cItem.quantity) || 1));
+      orderItems.push({
+        productId: `manual-${Date.now()}-${idx}`,
+        productName: cItem.name.trim().slice(0, 140),
+        unit: (cItem.unit || '১ পিস / প্রয়োজন অনুযায়ী').trim().slice(0, 60),
+        image: '/src/assets/images/cat_grocery_essentials_1794993131782.jpg',
+        quantity: qty,
+        price: 0,
+        purchasePrice: 0,
+        supplierId: defaultSupplier?.id || 'sup-1',
+        supplierName: 'ম্যানুয়াল সংগ্রহ (স্থানীয় বাজার)',
+        collected: false,
+        qcPassed: false,
+        isCustom: true,
+        customNote: cItem.note?.trim().slice(0, 140) || undefined,
+      });
+    });
+
     let discount = 0;
     let appliedCoupon: string | undefined;
     if (couponCode) {
@@ -338,10 +374,17 @@ async function startServer() {
     const now = new Date().toISOString();
     const orderNumber = createOrderNumber(db);
     const totalAmount = Math.max(0, subtotal - discount) + zone.charge;
+    const orderType: Order['orderType'] =
+      validCatalogItems.length > 0 && validCustomItems.length > 0
+        ? 'mixed'
+        : validCustomItems.length > 0
+          ? 'manual'
+          : 'catalog';
 
     const newOrder: Order = {
       id: `ord-${Date.now()}`,
       orderNumber,
+      orderType,
       userId: req.authUser?.userId,
       customerName: customerName.trim(),
       customerMobile: customerMobile.trim(),
@@ -369,7 +412,10 @@ async function startServer() {
           {
             status: 'Pending',
             timestamp: now,
-            note: 'অনলাইনে অর্ডার গ্রহণ করা হয়েছে (Cash on Delivery)',
+            note:
+              orderType === 'manual'
+                ? 'ম্যানুয়াল বাজার তালিকা (ফর্দ) অর্ডার গ্রহণ করা হয়েছে — মূল্য যাচাইয়ের অপেক্ষায়'
+                : 'অনলাইনে অর্ডার গ্রহণ করা হয়েছে (Cash on Delivery)',
           },
         ],
       },
@@ -429,6 +475,86 @@ async function startServer() {
     res.json(order);
   });
 
+  // ================= SELLER PRODUCT LISTINGS API =================
+  app.post('/api/seller-listings', (req: AuthRequest, res) => {
+    const db = getDb();
+    const body = req.body as Partial<SellerListing>;
+    if (
+      !body.sellerName?.trim() ||
+      !body.sellerMobile?.trim() ||
+      !body.productName?.trim() ||
+      !body.categoryId ||
+      !body.unit?.trim() ||
+      !body.askingPrice ||
+      Number(body.askingPrice) <= 0
+    ) {
+      res.status(400).json({
+        error: 'বিক্রেতার নাম, মোবাইল নম্বর, পণ্যের নাম, ক্যাটাগরি, পরিমাণ/ইউনিট এবং সঠিক দাম দিন।',
+      });
+      return;
+    }
+
+    const cat = db.categories.find((c) => c.id === body.categoryId) || db.categories[0];
+    const now = new Date().toISOString();
+    const askingPrice = Math.max(1, Math.round(Number(body.askingPrice)));
+    const suggestedSellingPrice = body.suggestedSellingPrice
+      ? Math.max(askingPrice, Math.round(Number(body.suggestedSellingPrice)))
+      : askingPrice;
+
+    const listing: SellerListing = {
+      id: `sell-${Date.now()}`,
+      userId: req.authUser?.userId,
+      sellerName: body.sellerName.trim().slice(0, 80),
+      shopName: (body.shopName || body.sellerName).trim().slice(0, 100),
+      sellerMobile: body.sellerMobile.trim().slice(0, 20),
+      marketArea: (body.marketArea || 'বড়লেখা, সিলেট').trim().slice(0, 100),
+      productName: body.productName.trim().slice(0, 120),
+      categoryId: cat?.id || 'cat-grocery',
+      subCategory: (body.subCategory || cat?.subCategories[0] || 'অন্যান্য').trim(),
+      brand: (body.brand || 'স্থানীয় বিক্রেতা').trim().slice(0, 60),
+      unit: body.unit.trim().slice(0, 40),
+      askingPrice,
+      suggestedSellingPrice,
+      stock: Math.max(1, Math.round(Number(body.stock) || 10)),
+      description: (
+        body.description || 'স্থানীয় বিক্রেতার মাধ্যমে Bazar Mate-এ সরাসরি যুক্ত পণ্য।'
+      )
+        .trim()
+        .slice(0, 500),
+      image:
+        (body.image && body.image.trim()) ||
+        cat?.image ||
+        '/src/assets/images/cat_grocery_essentials_1794993131782.jpg',
+      status: 'Pending',
+      createdAt: now,
+      updatedAt: now,
+    };
+
+    db.sellerListings.unshift(listing);
+    saveDb(db);
+    res.status(201).json(listing);
+  });
+
+  app.get('/api/seller-listings/my', requireAuth, (req: AuthRequest, res) => {
+    const db = getDb();
+    const user = db.users.find((u) => u.id === req.authUser?.userId);
+    const mine = db.sellerListings.filter(
+      (s) => s.userId === req.authUser?.userId || (user && s.sellerMobile === user.mobile),
+    );
+    res.json(mine);
+  });
+
+  app.get('/api/seller-listings/lookup', (req, res) => {
+    const db = getDb();
+    const mobile = String(req.query.mobile || '').trim();
+    if (!mobile) {
+      res.status(400).json({ error: 'মোবাইল নম্বর দিন।' });
+      return;
+    }
+    const matches = db.sellerListings.filter((s) => s.sellerMobile === mobile);
+    res.json(matches);
+  });
+
   // ================= ADMIN API ROUTES =================
   app.get('/api/admin/dashboard', requireAdmin, (_req, res) => {
     const db = getDb();
@@ -468,6 +594,7 @@ async function startServer() {
       coupons: db.coupons,
       banner: db.banner,
       customers: db.users.filter((u) => u.role === 'customer').map(sanitizeUser),
+      sellerListings: db.sellerListings,
     });
   });
 
@@ -626,6 +753,12 @@ async function startServer() {
     const now = new Date().toISOString();
     if (Array.isArray(items)) {
       order.items = items;
+      order.subtotal = items.reduce(
+        (sum, it) => sum + (Number(it.price) || 0) * (Number(it.quantity) || 1),
+        0,
+      );
+      order.totalAmount =
+        Math.max(0, order.subtotal - (order.discount || 0)) + order.deliveryCharge;
     }
     if (fulfillment) {
       order.fulfillment = {
@@ -704,6 +837,114 @@ async function startServer() {
   app.delete('/api/admin/coupons/:id', requireAdmin, (req, res) => {
     const db = getDb();
     db.coupons = db.coupons.filter((c) => c.id !== req.params.id);
+    saveDb(db);
+    res.json({ ok: true });
+  });
+
+  // Admin: Review & Publish Seller Product Listings
+  app.patch('/api/admin/seller-listings/:id', requireAdmin, (req, res) => {
+    const db = getDb();
+    const listing = db.sellerListings.find((s) => s.id === req.params.id);
+    if (!listing) {
+      res.status(404).json({ error: 'বিক্রেতার পণ্যের আবেদন পাওয়া যায়নি।' });
+      return;
+    }
+    const {
+      status,
+      sellingPrice,
+      purchasePrice,
+      stock,
+      categoryId,
+      subCategory,
+      adminNote,
+    } = req.body as {
+      status?: SellerListingStatus;
+      sellingPrice?: number;
+      purchasePrice?: number;
+      stock?: number;
+      categoryId?: string;
+      subCategory?: string;
+      adminNote?: string;
+    };
+
+    if (categoryId) listing.categoryId = categoryId;
+    if (subCategory) listing.subCategory = subCategory;
+    if (purchasePrice !== undefined) listing.askingPrice = Math.max(1, Number(purchasePrice));
+    if (sellingPrice !== undefined) listing.suggestedSellingPrice = Math.max(1, Number(sellingPrice));
+    if (stock !== undefined) listing.stock = Math.max(0, Number(stock));
+    if (adminNote !== undefined) listing.adminNote = adminNote.trim();
+    if (status) listing.status = status;
+    listing.updatedAt = new Date().toISOString();
+
+    let publishedProduct: Product | undefined;
+
+    if (listing.status === 'Approved') {
+      // Ensure a supplier record exists for this seller
+      let supplier = db.suppliers.find((sup) => sup.mobile === listing.sellerMobile);
+      if (!supplier) {
+        supplier = {
+          id: `sup-${Date.now()}`,
+          name: listing.sellerName,
+          shopName: listing.shopName || listing.sellerName,
+          mobile: listing.sellerMobile,
+          address: listing.marketArea || 'বড়লেখা, সিলেট',
+          marketArea: listing.marketArea || 'বড়লেখা',
+          notes: 'স্ব-নিবন্ধিত স্থানীয় বিক্রেতা',
+          active: true,
+          createdAt: listing.updatedAt,
+        };
+        db.suppliers.unshift(supplier);
+      }
+
+      if (listing.publishedProductId) {
+        const existingIdx = db.products.findIndex((p) => p.id === listing.publishedProductId);
+        if (existingIdx !== -1) {
+          db.products[existingIdx] = {
+            ...db.products[existingIdx],
+            categoryId: listing.categoryId,
+            subCategory: listing.subCategory,
+            price: listing.suggestedSellingPrice,
+            purchasePrice: listing.askingPrice,
+            stock: listing.stock,
+            active: true,
+          };
+          publishedProduct = db.products[existingIdx];
+        }
+      }
+
+      if (!publishedProduct) {
+        publishedProduct = {
+          id: `prod-${Date.now()}`,
+          name: listing.productName,
+          nameEn: listing.productName,
+          categoryId: listing.categoryId,
+          subCategory: listing.subCategory,
+          brand: listing.brand || listing.shopName || 'স্থানীয় বিক্রেতা',
+          unit: listing.unit,
+          price: listing.suggestedSellingPrice,
+          purchasePrice: listing.askingPrice,
+          stock: listing.stock,
+          supplierId: supplier.id,
+          image: listing.image,
+          description: listing.description,
+          featured: true,
+          bestSeller: false,
+          isLocalSpecial: true,
+          active: true,
+          createdAt: listing.updatedAt,
+        };
+        db.products.unshift(publishedProduct);
+        listing.publishedProductId = publishedProduct.id;
+      }
+    }
+
+    saveDb(db);
+    res.json({ listing, product: publishedProduct });
+  });
+
+  app.delete('/api/admin/seller-listings/:id', requireAdmin, (req, res) => {
+    const db = getDb();
+    db.sellerListings = db.sellerListings.filter((s) => s.id !== req.params.id);
     saveDb(db);
     res.json({ ok: true });
   });

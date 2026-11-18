@@ -1,6 +1,20 @@
 import { useEffect, useState } from 'react';
-import { Banknote, CheckCircle2, CreditCard, MapPin, Truck, X } from 'lucide-react';
+import {
+  Banknote,
+  CheckCircle2,
+  CreditCard,
+  MapPin,
+  MessageCircle,
+  Phone,
+  Truck,
+  X,
+} from 'lucide-react';
 import { api } from '../lib/api';
+import {
+  OFFICIAL_PHONE,
+  OFFICIAL_PHONE_TEL,
+  OFFICIAL_WHATSAPP_URL,
+} from '../lib/contact';
 import type { DeliveryZone, Order, User } from '../types/marketplace';
 import type { CartItem } from './CartDrawer';
 
@@ -14,6 +28,7 @@ interface CheckoutModalProps {
   onSelectZone: (zoneId: string) => void;
   onOrderSuccess: (order: Order) => void;
   onTrackOrder: (orderNumber: string) => void;
+  onOpenOrderPanel?: (orderNumber: string) => void;
   onClose: () => void;
 }
 
@@ -27,6 +42,7 @@ export function CheckoutModal({
   onSelectZone,
   onOrderSuccess,
   onTrackOrder,
+  onOpenOrderPanel,
   onClose,
 }: CheckoutModalProps) {
   const [customerName, setCustomerName] = useState(user?.name || '');
@@ -148,6 +164,27 @@ export function CheckoutModal({
                 <span>মোট প্রদেয় মূল্য</span>
                 <span>৳{confirmedOrder.totalAmount.toLocaleString('en-US')}</span>
               </div>
+              <div className="pt-2 border-t border-[#E5E4DF] flex flex-wrap items-center justify-between gap-2 text-xs text-[#52525B]">
+                <span>অর্ডার সংক্রান্ত সহায়তা:</span>
+                <div className="flex items-center gap-3 font-mono-tabular">
+                  <a
+                    href={OFFICIAL_PHONE_TEL}
+                    className="inline-flex items-center gap-1 font-semibold text-[#18181B] hover:text-[#0F6B46]"
+                  >
+                    <Phone className="w-3.5 h-3.5 text-[#0F6B46]" />
+                    <span>{OFFICIAL_PHONE}</span>
+                  </a>
+                  <a
+                    href={OFFICIAL_WHATSAPP_URL}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1 font-semibold text-[#0F6B46] hover:underline"
+                  >
+                    <MessageCircle className="w-3.5 h-3.5" />
+                    <span>WhatsApp</span>
+                  </a>
+                </div>
+              </div>
             </div>
 
             <div className="flex flex-wrap gap-3 justify-center">
@@ -162,6 +199,19 @@ export function CheckoutModal({
               >
                 অর্ডার স্ট্যাটাস ট্র্যাক করুন
               </button>
+              {onOpenOrderPanel && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    const num = confirmedOrder.orderNumber;
+                    handleCloseAll();
+                    onOpenOrderPanel(num);
+                  }}
+                  className="px-6 py-3 text-sm font-semibold rounded-lg border border-[#0F6B46] text-[#0F6B46] hover:bg-[#0F6B46]/5"
+                >
+                  অর্ডার ম্যানেজমেন্ট প্যানেল
+                </button>
+              )}
               <button
                 type="button"
                 onClick={handleCloseAll}

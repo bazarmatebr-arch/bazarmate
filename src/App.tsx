@@ -4,6 +4,7 @@ import {
   CheckCircle2,
   Home,
   MapPin,
+  MessageCircle,
   PackageSearch,
   Phone,
   Search,
@@ -15,14 +16,22 @@ import {
   X,
 } from 'lucide-react';
 import { AccountView } from './components/AccountView';
-import { AdminDashboard } from './components/AdminDashboard';
+import { AdminDashboard, type AdminSection } from './components/AdminDashboard';
 import { CartDrawer, type CartItem } from './components/CartDrawer';
 import { CheckoutModal } from './components/CheckoutModal';
+import { ManualOrderSection } from './components/ManualOrderSection';
 import { OrderTrackingView } from './components/OrderTrackingView';
 import { ProductCard } from './components/ProductCard';
 import { ProductModal } from './components/ProductModal';
 import { ResilientImage } from './components/ResilientImage';
+import { SellProductSection } from './components/SellProductSection';
 import { api, getStoredToken, setStoredToken } from './lib/api';
+import {
+  OFFICIAL_EMAIL,
+  OFFICIAL_PHONE,
+  OFFICIAL_PHONE_TEL,
+  OFFICIAL_WHATSAPP_URL,
+} from './lib/contact';
 import type {
   BannerSettings,
   Category,
@@ -83,6 +92,8 @@ export default function App() {
   // Modals & Navigation targets
   const [activeProduct, setActiveProduct] = useState<Product | null>(null);
   const [trackOrderNum, setTrackOrderNum] = useState<string>('');
+  const [adminFocusOrder, setAdminFocusOrder] = useState<string>('');
+  const [adminSection, setAdminSection] = useState<AdminSection>('orders');
 
   // Review Form
   const [showReviewForm, setShowReviewForm] = useState(false);
@@ -92,6 +103,8 @@ export default function App() {
   const [revRating, setRevRating] = useState(5);
 
   const catalogRef = useRef<HTMLElement>(null);
+  const manualOrderRef = useRef<HTMLDivElement>(null);
+  const sellProductRef = useRef<HTMLDivElement>(null);
   const howItWorksRef = useRef<HTMLElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
 
@@ -368,7 +381,10 @@ export default function App() {
             </button>
             <button
               type="button"
-              onClick={() => setView('admin')}
+              onClick={() => {
+                setAdminSection('orders');
+                setView('admin');
+              }}
               className={`whitespace-nowrap shrink-0 transition-colors hover:text-[#18181B] ${
                 view === 'admin' ? 'text-[#0F6B46] font-semibold' : ''
               }`}
@@ -432,6 +448,24 @@ export default function App() {
                     </button>
                     <button
                       type="button"
+                      onClick={() =>
+                        manualOrderRef.current?.scrollIntoView({ behavior: 'smooth' })
+                      }
+                      className="inline-flex items-center gap-2 px-5 py-3.5 text-sm font-semibold rounded-lg border border-[#0F6B46] bg-white text-[#0F6B46] hover:bg-[#0F6B46]/5 transition-colors min-h-[44px]"
+                    >
+                      <span>নাম লিখে অর্ডার করুন</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        sellProductRef.current?.scrollIntoView({ behavior: 'smooth' })
+                      }
+                      className="inline-flex items-center gap-2 px-5 py-3.5 text-sm font-semibold rounded-lg border border-[#E5E4DF] bg-white text-[#18181B] hover:bg-[#F3F2EE] transition-colors min-h-[44px]"
+                    >
+                      <span>পণ্য বিক্রি করুন</span>
+                    </button>
+                    <button
+                      type="button"
                       onClick={() => setView('track')}
                       className="inline-flex items-center gap-2 px-5 py-3.5 text-sm font-semibold rounded-lg border border-[#E5E4DF] bg-white text-[#18181B] hover:bg-[#F3F2EE] transition-colors min-h-[44px]"
                     >
@@ -440,14 +474,21 @@ export default function App() {
                   </div>
 
                   {/* Clean unboxed key promises */}
-                  <div className="pt-4 border-t border-[#E5E4DF] flex flex-wrap items-center gap-x-5 gap-y-2 text-xs text-[#52525B]">
+                  <div className="pt-4 border-t border-[#E5E4DF] flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-[#52525B]">
                     <span>বড়লেখা উপজেলা ৳{deliveryZones[0]?.charge ?? 100}</span>
                     <span aria-hidden="true">·</span>
                     <span>সারাদেশে ৳{deliveryZones[1]?.charge ?? 150}</span>
                     <span aria-hidden="true">·</span>
                     <span>Cash on Delivery</span>
                     <span aria-hidden="true">·</span>
-                    <span>এক কার্টে সব বাজার</span>
+                    <a
+                      href={OFFICIAL_WHATSAPP_URL}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="font-mono-tabular font-semibold text-[#0F6B46] hover:underline"
+                    >
+                      ফোন ও হোয়াটসঅ্যাপ: {OFFICIAL_PHONE}
+                    </a>
                   </div>
                 </div>
 
@@ -685,6 +726,35 @@ export default function App() {
               )}
             </section>
 
+            {/* MANUAL BAZAR LIST ORDER SECTION */}
+            <div ref={manualOrderRef}>
+              <ManualOrderSection
+                deliveryZones={deliveryZones}
+                user={user}
+                onTrackOrder={(num) => {
+                  setTrackOrderNum(num);
+                  setView('track');
+                }}
+                onOpenOrderPanel={(num) => {
+                  setAdminFocusOrder(num);
+                  setAdminSection('orders');
+                  setView('admin');
+                }}
+              />
+            </div>
+
+            {/* SELLER PRODUCT UPLOAD SECTION */}
+            <div ref={sellProductRef}>
+              <SellProductSection
+                categories={categories}
+                user={user}
+                onOpenAdminSellers={() => {
+                  setAdminSection('sellers');
+                  setView('admin');
+                }}
+              />
+            </div>
+
             {/* HOW BAZAR MATE WORKS + DELIVERY & REVIEWS */}
             <section
               ref={howItWorksRef}
@@ -770,6 +840,24 @@ export default function App() {
                       <span>
                         বর্তমানে ক্যাশ অন ডেলিভারি চালু আছে; ভবিষ্যতে বিকাশ/নগদ অনলাইন পেমেন্ট ও মোবাইল অ্যাপ যুক্ত করা হবে।
                       </span>
+                    </div>
+                    <div className="pt-2 border-t border-[#E5E4DF] flex flex-wrap items-center gap-2 text-xs">
+                      <a
+                        href={OFFICIAL_PHONE_TEL}
+                        className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-[#E5E4DF] bg-[#FAF9F6] text-[#18181B] font-mono-tabular font-semibold hover:border-[#0F6B46]"
+                      >
+                        <Phone className="w-3.5 h-3.5 text-[#0F6B46]" />
+                        <span>কল: {OFFICIAL_PHONE}</span>
+                      </a>
+                      <a
+                        href={OFFICIAL_WHATSAPP_URL}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-[#0F6B46]/30 bg-[#0F6B46]/5 text-[#0F6B46] font-semibold hover:bg-[#0F6B46]/10"
+                      >
+                        <MessageCircle className="w-3.5 h-3.5" />
+                        <span>হোয়াটসঅ্যাপ: {OFFICIAL_PHONE}</span>
+                      </a>
                     </div>
                   </div>
 
@@ -889,12 +977,18 @@ export default function App() {
             onToggleWishlist={handleToggleWishlist}
             onAddToCart={addToCart}
             onBrowseCatalog={() => scrollToCatalog('ALL')}
+            onOpenSellProduct={() => {
+              setView('home');
+              setTimeout(() => sellProductRef.current?.scrollIntoView({ behavior: 'smooth' }), 80);
+            }}
           />
         )}
 
         {view === 'admin' && (
           <AdminDashboard
             user={user}
+            initialSection={adminSection}
+            focusOrderNumber={adminFocusOrder}
             onAuthSuccess={(u) => setUser(u)}
             onStorefrontRefresh={fetchStorefront}
           />
@@ -946,7 +1040,29 @@ export default function App() {
                 </button>
               </li>
               <li>
-                <button type="button" onClick={() => setView('admin')} className="hover:text-white">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setView('home');
+                    setTimeout(
+                      () => sellProductRef.current?.scrollIntoView({ behavior: 'smooth' }),
+                      80,
+                    );
+                  }}
+                  className="hover:text-white"
+                >
+                  পণ্য বিক্রি করুন (বিক্রেতা)
+                </button>
+              </li>
+              <li>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setAdminSection('orders');
+                    setView('admin');
+                  }}
+                  className="hover:text-white"
+                >
                   অ্যাডমিন প্যানেল
                 </button>
               </li>
@@ -961,7 +1077,22 @@ export default function App() {
             </div>
             <div className="flex items-center gap-2 text-[#A1A1AA] font-mono-tabular">
               <Phone className="w-3.5 h-3.5 shrink-0 text-[#10B981]" />
-              <span>01700-000000 · support@bazarmate.bd</span>
+              <a href={OFFICIAL_PHONE_TEL} className="hover:text-white">
+                {OFFICIAL_PHONE}
+              </a>
+              <span aria-hidden="true">·</span>
+              <span>{OFFICIAL_EMAIL}</span>
+            </div>
+            <div className="flex items-center gap-2 text-[#10B981] font-mono-tabular">
+              <MessageCircle className="w-3.5 h-3.5 shrink-0" />
+              <a
+                href={OFFICIAL_WHATSAPP_URL}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="hover:text-white"
+              >
+                WhatsApp: {OFFICIAL_PHONE}
+              </a>
             </div>
           </div>
         </div>
@@ -1088,6 +1219,11 @@ export default function App() {
         onTrackOrder={(num) => {
           setTrackOrderNum(num);
           setView('track');
+        }}
+        onOpenOrderPanel={(num) => {
+          setAdminFocusOrder(num);
+          setAdminSection('orders');
+          setView('admin');
         }}
         onClose={() => setCheckoutOpen(false)}
       />

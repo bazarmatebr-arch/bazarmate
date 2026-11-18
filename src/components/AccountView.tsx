@@ -8,6 +8,7 @@ import {
   RefreshCw,
   Search,
   ShoppingBag,
+  Store,
   Trash2,
   User as UserIcon,
 } from 'lucide-react';
@@ -17,6 +18,8 @@ import {
   type DeliveryZone,
   type Order,
   type Product,
+  type SellerListing,
+  type SellerListingStatus,
   type User,
 } from '../types/marketplace';
 import { ResilientImage } from './ResilientImage';
@@ -34,7 +37,14 @@ interface AccountViewProps {
   onToggleWishlist: (productId: string) => void;
   onAddToCart: (product: Product, quantity?: number) => void;
   onBrowseCatalog: () => void;
+  onOpenSellProduct?: () => void;
 }
+
+const SELLER_STATUS_BN: Record<SellerListingStatus, string> = {
+  Pending: 'যাচাইয়ের অপেক্ষায়',
+  Approved: 'অনুমোদিত (স্টোরে লাইভ)',
+  Rejected: 'বাতিলকৃত',
+};
 
 export function AccountView({
   user,
@@ -49,6 +59,7 @@ export function AccountView({
   onToggleWishlist,
   onAddToCart,
   onBrowseCatalog,
+  onOpenSellProduct,
 }: AccountViewProps) {
   const [mode, setMode] = useState<'login' | 'register'>('login');
   const [identifier, setIdentifier] = useState('');
@@ -59,8 +70,11 @@ export function AccountView({
   const [authError, setAuthError] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
-  const [tab, setTab] = useState<'orders' | 'wishlist' | 'addresses' | 'profile'>('orders');
+  const [tab, setTab] = useState<'orders' | 'wishlist' | 'selling' | 'addresses' | 'profile'>(
+    'orders',
+  );
   const [orders, setOrders] = useState<Order[]>([]);
+  const [sellerListings, setSellerListings] = useState<SellerListing[]>([]);
   const [loadingOrders, setLoadingOrders] = useState(false);
 
   // New Address Form
@@ -87,6 +101,10 @@ export function AccountView({
         .then(setOrders)
         .catch(() => {})
         .finally(() => setLoadingOrders(false));
+      api
+        .getMySellerListings()
+        .then(setSellerListings)
+        .catch(() => {});
     }
   }, [user]);
 
@@ -339,6 +357,7 @@ export function AccountView({
         {[
           { id: 'orders', label: `আমার অর্ডার (${orders.length})` },
           { id: 'wishlist', label: `উইশলিস্ট (${wishlistProducts.length})` },
+          { id: 'selling', label: `আমার বিক্রয় পণ্য (${sellerListings.length})` },
           { id: 'addresses', label: `সংরক্ষিত ঠিকানা (${user.savedAddresses.length})` },
           { id: 'profile', label: 'প্রোফাইল' },
         ].map((t) => (
@@ -606,6 +625,88 @@ export function AccountView({
           </div>
         );
       })()}
+
+      {tab === 'selling' && (
+        <div className="space-y-4">
+          <div className="bg-white border border-[#E5E4DF] rounded-xl p-4 sm:p-5 flex flex-wrap items-center justify-between gap-4">
+            <div>
+              <h2 className="text-base sm:text-lg font-bold text-[#18181B]">
+                আমার বিক্রয় পণ্যসমূহ
+              </h2>
+              <p className="text-xs text-[#52525B]">
+                Bazar Mate-এ বিক্রির জন্য আপনার আপলোড করা পণ্যের তালিকা ও অনুমোদনের অবস্থা।
+              </p>
+            </div>
+            {onOpenSellProduct && (
+              <button
+                type="button"
+                onClick={onOpenSellProduct}
+                className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-semibold rounded-lg bg-[#0F6B46] text-white hover:bg-[#0B5235]"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>নতুন পণ্য আপলোড করুন</span>
+              </button>
+            )}
+          </div>
+
+          {sellerListings.length === 0 ? (
+            <div className="bg-white border border-[#E5E4DF] rounded-xl p-10 text-center space-y-3">
+              <Store className="w-10 h-10 mx-auto text-[#A1A1AA]" strokeWidth={1.5} />
+              <p className="text-sm font-semibold text-[#18181B]">
+                আপনি এখনো কোনো পণ্য বিক্রির জন্য আপলোড করেননি
+              </p>
+              {onOpenSellProduct && (
+                <button
+                  type="button"
+                  onClick={onOpenSellProduct}
+                  className="px-5 py-2.5 text-xs font-semibold rounded-lg bg-[#0F6B46] text-white hover:bg-[#0B5235]"
+                >
+                  প্রথম পণ্য আপলোড করুন
+                </button>
+              )}
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {sellerListings.map((item) => (
+                <div
+                  key={item.id}
+                  className="bg-white border border-[#E5E4DF] rounded-xl p-4 flex gap-4"
+                >
+                  <div className="w-20 h-20 rounded-lg overflow-hidden bg-[#F3F2EE] border border-[#E5E4DF] shrink-0">
+                    <ResilientImage
+                      src={item.image}
+                      alt={item.productName}
+                      className="w-full h-full object-cover"
+                    />
+                  </div>
+                  <div className="min-w-0 flex-1 space-y-1 text-xs">
+                    <div className="font-bold text-sm text-[#18181B] truncate">
+                      {item.productName}
+                    </div>
+                    <div className="text-[#52525B] tabular-nums">
+                      {item.unit} · আপনার দাম: ৳{item.askingPrice} · স্টক: {item.stock}টি
+                    </div>
+                    <div
+                      className={`font-semibold ${
+                        item.status === 'Approved'
+                          ? 'text-[#0F6B46]'
+                          : item.status === 'Rejected'
+                            ? 'text-[#DC2626]'
+                            : 'text-[#D97706]'
+                      }`}
+                    >
+                      {SELLER_STATUS_BN[item.status]}
+                    </div>
+                    {item.adminNote && (
+                      <p className="text-[11px] text-[#52525B]">নোট: {item.adminNote}</p>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       {tab === 'addresses' && (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
