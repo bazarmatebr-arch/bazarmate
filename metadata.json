@@ -1,0 +1,6 @@
+{
+  "name": "Bazar Mate",
+  "description": "বড়লেখা, সিলেট ভিত্তিক আধুনিক অনলাইন মার্কেটপ্লেস ও হোম ডেলিভারি প্ল্যাটফর্ম — ঘরে বসেই বাজার করুন।",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
