@@ -4,7 +4,9 @@ import path from 'node:path';
 import { createServer as createViteServer } from 'vite';
 import {
   createOrderNumber,
+  createParcelCode,
   createSavedAddress,
+  getAuthorizedAdmins,
   getDb,
   hashPassword,
   sanitizeUser,
@@ -21,6 +23,8 @@ import type {
   Order,
   OrderItem,
   OrderStatus,
+  ParcelBooking,
+  ParcelStatus,
   Product,
   Review,
   SellerListing,
@@ -54,7 +58,13 @@ function requireAuth(req: AuthRequest, res: Response, next: NextFunction) {
 
 function requireAdmin(req: AuthRequest, res: Response, next: NextFunction) {
   if (!req.authUser || req.authUser.role !== 'admin') {
-    res.status(403).json({ error: 'শুধুমাত্র অ্যাডমিন এই অ্যাক্সেস করতে পারবেন।' });
+    res.status(403).json({ error: 'শুধুমাত্র অনুমোদিত অ্যাডমিন এই অ্যাক্সেস করতে পারবেন।' });
+    return;
+  }
+  const db = getDb();
+  const allowedAdmins = getAuthorizedAdmins(db);
+  if (!allowedAdmins.some((a) => a.id === req.authUser?.userId)) {
+    res.status(403).json({ error: 'শুধুমাত্র অনুমোদিত ২ জন অ্যাডমিন প্রবেশ করতে পারবেন।' });
     return;
   }
   next();
@@ -158,8 +168,38 @@ async function startServer() {
       res.status(401).json({ error: 'মোবাইল নম্বর/ইমেইল অথবা পাসওয়ার্ড সঠিক নয়।' });
       return;
     }
+    if (user.role === 'admin') {
+      const allowedAdmins = getAuthorizedAdmins(db);
+      if (!allowedAdmins.some((a) => a.id === user.id)) {
+        res.status(403).json({ error: 'শুধুমাত্র অনুমোদিত ২ জন অ্যাডমিন লগইন করতে পারবেন।' });
+        return;
+      }
+    }
     const token = signToken({ userId: user.id, role: user.role });
     res.json({ token, user: sanitizeUser(user) });
+  });
+
+  // Dedicated Admin Login (Strictly limited to the 2 authorized admins)
+  app.post('/api/admin/login', (req, res) => {
+    const db = getDb();
+    const { identifier, password } = req.body as { identifier?: string; password?: string };
+    if (!identifier || !password) {
+      res.status(400).json({ error: 'অ্যাডমিন ইমেইল বা মোবাইল এবং পাসওয়ার্ড দিন।' });
+      return;
+    }
+    const idClean = identifier.trim().toLowerCase();
+    const allowedAdmins = getAuthorizedAdmins(db);
+    const admin = allowedAdmins.find(
+      (u) => u.mobile.toLowerCase() === idClean || (u.email && u.email.toLowerCase() === idClean),
+    );
+    if (!admin || !verifyPassword(password, admin.passwordHash)) {
+      res.status(401).json({
+        error: 'সঠিক অ্যাডমিন তথ্য দিন। শুধুমাত্র অনুমোদিত ২ জন অ্যাডমিন লগইন করতে পারবেন।',
+      });
+      return;
+    }
+    const token = signToken({ userId: admin.id, role: 'admin' });
+    res.json({ token, user: sanitizeUser(admin) });
   });
 
   // Auth: Current User
@@ -555,6 +595,77 @@ async function startServer() {
     res.json(matches);
   });
 
+  // ================= BARLEKHA PARCEL COURIER API =================
+  app.post('/api/parcels', (req: AuthRequest, res) => {
+    const db = getDb();
+    const body = req.body as Partial<ParcelBooking>;
+    if (
+      !body.senderName?.trim() ||
+      !body.senderMobile?.trim() ||
+      !body.pickupAddress?.trim() ||
+      !body.receiverName?.trim() ||
+      !body.receiverMobile?.trim() ||
+      !body.deliveryAddress?.trim()
+    ) {
+      res.status(400).json({
+        error: 'প্রেরক ও প্রাপকের নাম, মোবাইল নম্বর, পিকআপ ও ডেলিভারি ঠিকানা সঠিকভাবে দিন।',
+      });
+      return;
+    }
+
+    const zone =
+      db.deliveryZones.find((z) => z.id === body.deliveryZoneId) || db.deliveryZones[0];
+    const now = new Date().toISOString();
+    const parcel: ParcelBooking = {
+      id: `pcl-${Date.now()}`,
+      parcelCode: createParcelCode(db),
+      userId: req.authUser?.userId,
+      senderName: body.senderName.trim().slice(0, 80),
+      senderMobile: body.senderMobile.trim().slice(0, 20),
+      pickupArea: (body.pickupArea || 'বড়লেখা সদর').trim().slice(0, 80),
+      pickupAddress: body.pickupAddress.trim().slice(0, 250),
+      receiverName: body.receiverName.trim().slice(0, 80),
+      receiverMobile: body.receiverMobile.trim().slice(0, 20),
+      deliveryZoneId: zone?.id || 'zone-barlekha',
+      deliveryArea: (body.deliveryArea || zone?.name || 'বড়লেখা উপজেলা').trim().slice(0, 80),
+      deliveryAddress: body.deliveryAddress.trim().slice(0, 250),
+      parcelType: (body.parcelType || 'সাধারণ পার্সেল').trim().slice(0, 80),
+      weight: (body.weight || '১ কেজি পর্যন্ত').trim().slice(0, 40),
+      codAmount: Math.max(0, Math.round(Number(body.codAmount) || 0)),
+      deliveryCharge: zone?.charge ?? 100,
+      note: (body.note || '').trim().slice(0, 250),
+      status: 'Booked',
+      riderName: '',
+      riderPhone: '',
+      createdAt: now,
+      updatedAt: now,
+    };
+
+    db.parcelBookings.unshift(parcel);
+    saveDb(db);
+    res.status(201).json(parcel);
+  });
+
+  app.get('/api/parcels/track', (req, res) => {
+    const db = getDb();
+    const code = String(req.query.parcelCode || '').trim().toUpperCase();
+    const mobile = String(req.query.mobile || '').trim();
+    if (!code && !mobile) {
+      res.status(400).json({ error: 'পার্সেল কোড (যেমন: PKG-1001) অথবা মোবাইল নম্বর দিন।' });
+      return;
+    }
+    const matches = db.parcelBookings.filter((p) => {
+      if (code && p.parcelCode.toUpperCase() === code) return true;
+      if (mobile && (p.senderMobile === mobile || p.receiverMobile === mobile)) return true;
+      return false;
+    });
+    if (matches.length === 0) {
+      res.status(404).json({ error: 'এই কোড বা নম্বরে কোনো পার্সেল পাওয়া যায়নি।' });
+      return;
+    }
+    res.json(matches);
+  });
+
   // ================= ADMIN API ROUTES =================
   app.get('/api/admin/dashboard', requireAdmin, (_req, res) => {
     const db = getDb();
@@ -595,7 +706,89 @@ async function startServer() {
       banner: db.banner,
       customers: db.users.filter((u) => u.role === 'customer').map(sanitizeUser),
       sellerListings: db.sellerListings,
+      parcelBookings: db.parcelBookings,
+      admins: getAuthorizedAdmins(db).map(sanitizeUser),
     });
+  });
+
+  // Admin: Change Own Password
+  app.patch('/api/admin/password', requireAdmin, (req: AuthRequest, res) => {
+    const db = getDb();
+    const { currentPassword, newPassword } = req.body as {
+      currentPassword?: string;
+      newPassword?: string;
+    };
+    if (!currentPassword || !newPassword || newPassword.trim().length < 6) {
+      res.status(400).json({
+        error: 'বর্তমান পাসওয়ার্ড এবং কমপক্ষে ৬ অক্ষরের নতুন পাসওয়ার্ড দিন।',
+      });
+      return;
+    }
+    const admin = getAuthorizedAdmins(db).find((a) => a.id === req.authUser?.userId);
+    if (!admin || !verifyPassword(currentPassword, admin.passwordHash)) {
+      res.status(400).json({ error: 'বর্তমান পাসওয়ার্ড সঠিক নয়।' });
+      return;
+    }
+    admin.passwordHash = hashPassword(newPassword.trim());
+    saveDb(db);
+    res.json({ ok: true, message: 'পাসওয়ার্ড সফলভাবে পরিবর্তন করা হয়েছে।' });
+  });
+
+  // Admin: Update one of the 2 authorized Admin accounts (name, email, mobile, or password)
+  app.patch('/api/admin/admins/:id', requireAdmin, (req: AuthRequest, res) => {
+    const db = getDb();
+    const allowedAdmins = getAuthorizedAdmins(db);
+    const actingAdmin = allowedAdmins.find((a) => a.id === req.authUser?.userId);
+    const target = allowedAdmins.find((a) => a.id === req.params.id);
+    if (!actingAdmin || !target) {
+      res.status(404).json({ error: 'অনুমোদিত অ্যাডমিন অ্যাকাউন্ট পাওয়া যায়নি।' });
+      return;
+    }
+    const { name, email, mobile, newPassword, currentAdminPassword } = req.body as {
+      name?: string;
+      email?: string;
+      mobile?: string;
+      newPassword?: string;
+      currentAdminPassword?: string;
+    };
+    if (!currentAdminPassword || !verifyPassword(currentAdminPassword, actingAdmin.passwordHash)) {
+      res.status(400).json({
+        error: 'অ্যাডমিন তথ্য বা পাসওয়ার্ড পরিবর্তনের জন্য আপনার বর্তমান পাসওয়ার্ড দিন।',
+      });
+      return;
+    }
+    if (email && email.trim()) {
+      const cleanEmail = email.trim().toLowerCase();
+      const dupEmail = db.users.find(
+        (u) => u.id !== target.id && u.email && u.email.toLowerCase() === cleanEmail,
+      );
+      if (dupEmail) {
+        res.status(409).json({ error: 'এই ইমেইলটি অন্য অ্যাকাউন্টে ব্যবহৃত হচ্ছে।' });
+        return;
+      }
+      target.email = email.trim();
+    }
+    if (mobile && mobile.trim()) {
+      const cleanMob = mobile.trim();
+      const dupMob = db.users.find((u) => u.id !== target.id && u.mobile === cleanMob);
+      if (dupMob) {
+        res.status(409).json({ error: 'এই মোবাইল নম্বরটি অন্য অ্যাকাউন্টে ব্যবহৃত হচ্ছে।' });
+        return;
+      }
+      target.mobile = cleanMob;
+    }
+    if (name && name.trim()) {
+      target.name = name.trim();
+    }
+    if (newPassword && newPassword.trim()) {
+      if (newPassword.trim().length < 6) {
+        res.status(400).json({ error: 'নতুন পাসওয়ার্ড কমপক্ষে ৬ অক্ষরের হতে হবে।' });
+        return;
+      }
+      target.passwordHash = hashPassword(newPassword.trim());
+    }
+    saveDb(db);
+    res.json({ admin: sanitizeUser(target) });
   });
 
   // Admin: Products CRUD
@@ -945,6 +1138,38 @@ async function startServer() {
   app.delete('/api/admin/seller-listings/:id', requireAdmin, (req, res) => {
     const db = getDb();
     db.sellerListings = db.sellerListings.filter((s) => s.id !== req.params.id);
+    saveDb(db);
+    res.json({ ok: true });
+  });
+
+  // Admin: Barlekha Parcel Courier Management
+  app.patch('/api/admin/parcels/:id', requireAdmin, (req, res) => {
+    const db = getDb();
+    const parcel = db.parcelBookings.find((p) => p.id === req.params.id);
+    if (!parcel) {
+      res.status(404).json({ error: 'পার্সেল বুকিং পাওয়া যায়নি।' });
+      return;
+    }
+    const { status, riderName, riderPhone, deliveryCharge, note } = req.body as {
+      status?: ParcelStatus;
+      riderName?: string;
+      riderPhone?: string;
+      deliveryCharge?: number;
+      note?: string;
+    };
+    if (status) parcel.status = status;
+    if (riderName !== undefined) parcel.riderName = riderName.trim();
+    if (riderPhone !== undefined) parcel.riderPhone = riderPhone.trim();
+    if (deliveryCharge !== undefined) parcel.deliveryCharge = Math.max(0, Number(deliveryCharge));
+    if (note !== undefined) parcel.note = note.trim();
+    parcel.updatedAt = new Date().toISOString();
+    saveDb(db);
+    res.json(parcel);
+  });
+
+  app.delete('/api/admin/parcels/:id', requireAdmin, (req, res) => {
+    const db = getDb();
+    db.parcelBookings = db.parcelBookings.filter((p) => p.id !== req.params.id);
     saveDb(db);
     res.json({ ok: true });
   });

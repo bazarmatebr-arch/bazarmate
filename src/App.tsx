@@ -21,6 +21,7 @@ import { CartDrawer, type CartItem } from './components/CartDrawer';
 import { CheckoutModal } from './components/CheckoutModal';
 import { ManualOrderSection } from './components/ManualOrderSection';
 import { OrderTrackingView } from './components/OrderTrackingView';
+import { ParcelServiceView } from './components/ParcelServiceView';
 import { ProductCard } from './components/ProductCard';
 import { ProductModal } from './components/ProductModal';
 import { ResilientImage } from './components/ResilientImage';
@@ -42,7 +43,7 @@ import type {
   User,
 } from './types/marketplace';
 
-type PageView = 'home' | 'track' | 'account' | 'admin';
+type PageView = 'home' | 'track' | 'account' | 'admin' | 'sell' | 'parcel';
 type CollectionTab = 'all' | 'featured' | 'bestseller' | 'local' | 'offers';
 
 const HERO_IMAGE = '/src/assets/images/hero_barlekha_market_1794993132647.jpg';
@@ -104,7 +105,6 @@ export default function App() {
 
   const catalogRef = useRef<HTMLElement>(null);
   const manualOrderRef = useRef<HTMLDivElement>(null);
-  const sellProductRef = useRef<HTMLDivElement>(null);
   const howItWorksRef = useRef<HTMLElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
 
@@ -389,7 +389,7 @@ export default function App() {
                 view === 'admin' ? 'text-[#0F6B46] font-semibold' : ''
               }`}
             >
-              অ্যাডমিন
+              JK
             </button>
           </nav>
 
@@ -457,12 +457,18 @@ export default function App() {
                     </button>
                     <button
                       type="button"
-                      onClick={() =>
-                        sellProductRef.current?.scrollIntoView({ behavior: 'smooth' })
-                      }
+                      onClick={() => setView('sell')}
                       className="inline-flex items-center gap-2 px-5 py-3.5 text-sm font-semibold rounded-lg border border-[#E5E4DF] bg-white text-[#18181B] hover:bg-[#F3F2EE] transition-colors min-h-[44px]"
                     >
                       <span>পণ্য বিক্রি করুন</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setView('parcel')}
+                      className="inline-flex items-center gap-2 px-5 py-3.5 text-sm font-semibold rounded-lg border border-[#0F6B46]/35 bg-[#0F6B46]/5 text-[#0F6B46] hover:bg-[#0F6B46]/10 transition-colors min-h-[44px]"
+                    >
+                      <Truck className="w-4 h-4" />
+                      <span>পার্সেল কুরিয়ার সেবা</span>
                     </button>
                     <button
                       type="button"
@@ -743,18 +749,6 @@ export default function App() {
               />
             </div>
 
-            {/* SELLER PRODUCT UPLOAD SECTION */}
-            <div ref={sellProductRef}>
-              <SellProductSection
-                categories={categories}
-                user={user}
-                onOpenAdminSellers={() => {
-                  setAdminSection('sellers');
-                  setView('admin');
-                }}
-              />
-            </div>
-
             {/* HOW BAZAR MATE WORKS + DELIVERY & REVIEWS */}
             <section
               ref={howItWorksRef}
@@ -977,10 +971,27 @@ export default function App() {
             onToggleWishlist={handleToggleWishlist}
             onAddToCart={addToCart}
             onBrowseCatalog={() => scrollToCatalog('ALL')}
-            onOpenSellProduct={() => {
-              setView('home');
-              setTimeout(() => sellProductRef.current?.scrollIntoView({ behavior: 'smooth' }), 80);
+            onOpenSellProduct={() => setView('sell')}
+          />
+        )}
+
+        {view === 'sell' && (
+          <SellProductSection
+            categories={categories}
+            user={user}
+            onBackHome={() => setView('home')}
+            onOpenAdminSellers={() => {
+              setAdminSection('sellers');
+              setView('admin');
             }}
+          />
+        )}
+
+        {view === 'parcel' && (
+          <ParcelServiceView
+            deliveryZones={deliveryZones}
+            user={user}
+            onBackHome={() => setView('home')}
           />
         )}
 
@@ -990,6 +1001,10 @@ export default function App() {
             initialSection={adminSection}
             focusOrderNumber={adminFocusOrder}
             onAuthSuccess={(u) => setUser(u)}
+            onLogout={() => {
+              setStoredToken(null);
+              setUser(null);
+            }}
             onStorefrontRefresh={fetchStorefront}
           />
         )}
@@ -1042,16 +1057,19 @@ export default function App() {
               <li>
                 <button
                   type="button"
-                  onClick={() => {
-                    setView('home');
-                    setTimeout(
-                      () => sellProductRef.current?.scrollIntoView({ behavior: 'smooth' }),
-                      80,
-                    );
-                  }}
+                  onClick={() => setView('sell')}
                   className="hover:text-white"
                 >
                   পণ্য বিক্রি করুন (বিক্রেতা)
+                </button>
+              </li>
+              <li>
+                <button
+                  type="button"
+                  onClick={() => setView('parcel')}
+                  className="hover:text-white"
+                >
+                  পার্সেল কুরিয়ার সেবা (বড়লেখা)
                 </button>
               </li>
               <li>
@@ -1063,7 +1081,7 @@ export default function App() {
                   }}
                   className="hover:text-white"
                 >
-                  অ্যাডমিন প্যানেল
+                  JK
                 </button>
               </li>
             </ul>

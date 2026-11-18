@@ -210,13 +210,15 @@ export function ManualOrderSection({
               >
                 অর্ডার স্ট্যাটাস ট্র্যাক করুন
               </button>
-              <button
-                type="button"
-                onClick={() => onOpenOrderPanel(submittedOrder.orderNumber)}
-                className="px-5 py-2.5 text-xs font-semibold rounded-lg border border-[#0F6B46] text-[#0F6B46] hover:bg-[#0F6B46]/5"
-              >
-                অর্ডার ম্যানেজমেন্ট প্যানেল
-              </button>
+              {user?.role === 'admin' && (
+                <button
+                  type="button"
+                  onClick={() => onOpenOrderPanel(submittedOrder.orderNumber)}
+                  className="px-5 py-2.5 text-xs font-semibold rounded-lg border border-[#0F6B46] text-[#0F6B46] hover:bg-[#0F6B46]/5"
+                >
+                  JK প্যানেলে দেখুন
+                </button>
+              )}
               <button
                 type="button"
                 onClick={() => setSubmittedOrder(null)}

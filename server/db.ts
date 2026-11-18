@@ -8,6 +8,7 @@ import type {
   DeliveryZone,
   Order,
   OrderStatus,
+  ParcelBooking,
   Product,
   Review,
   SavedAddress,
@@ -31,7 +32,9 @@ export interface DatabaseSchema {
   users: StoredUser[];
   reviews: Review[];
   sellerListings: SellerListing[];
+  parcelBookings: ParcelBooking[];
   orderSeq: number;
+  parcelSeq: number;
 }
 
 const DATA_DIR = path.resolve(process.cwd(), 'data');
@@ -734,9 +737,20 @@ function createInitialData(): DatabaseSchema {
   const users: StoredUser[] = [
     {
       id: 'usr-admin',
-      name: 'Bazar Mate Admin',
+      name: 'Admin 1 (প্রধান অ্যাডমিন)',
       mobile: '01602507070',
       email: 'admin@bazarmate.bd',
+      role: 'admin',
+      passwordHash: hashPassword('admin123'),
+      savedAddresses: [],
+      wishlist: [],
+      createdAt: now,
+    },
+    {
+      id: 'usr-admin-2',
+      name: 'Admin 2 (সহযোগী অ্যাডমিন)',
+      mobile: '01602507071',
+      email: 'admin2@bazarmate.bd',
       role: 'admin',
       passwordHash: hashPassword('admin123'),
       savedAddresses: [],
@@ -962,6 +976,32 @@ function createInitialData(): DatabaseSchema {
     },
   ];
 
+  const parcelBookings: ParcelBooking[] = [
+    {
+      id: 'pcl-1001',
+      parcelCode: 'PKG-1001',
+      senderName: 'কামাল উদ্দিন',
+      senderMobile: '01711002233',
+      pickupArea: 'দক্ষিণবাজার, বড়লেখা',
+      pickupAddress: 'দক্ষিণবাজার মেইন রোড, নিউ মার্কেট দোকান #৫',
+      receiverName: 'সাব্বির আহমদ',
+      receiverMobile: '01811223344',
+      deliveryZoneId: 'zone-barlekha',
+      deliveryArea: 'কাঁঠালতলী বাজার, বড়লেখা',
+      deliveryAddress: 'কাঁঠালতলী স্কুল রোড, বড়লেখা',
+      parcelType: 'জরুরি ডকুমেন্ট ও গিফট',
+      weight: '১ কেজি পর্যন্ত',
+      codAmount: 0,
+      deliveryCharge: 100,
+      note: 'বিকেল ৫টার আগে পৌঁছে দেবেন',
+      status: 'In Transit',
+      riderName: 'জাহিদ হাসান',
+      riderPhone: '01899112233',
+      createdAt: now,
+      updatedAt: now,
+    },
+  ];
+
   return {
     categories,
     suppliers,
@@ -973,7 +1013,9 @@ function createInitialData(): DatabaseSchema {
     users,
     reviews,
     sellerListings,
+    parcelBookings,
     orderSeq: 1002,
+    parcelSeq: 1001,
   };
 }
 
@@ -992,8 +1034,36 @@ export function getDb(): DatabaseSchema {
   try {
     const raw = fs.readFileSync(DB_FILE, 'utf8');
     cachedDb = JSON.parse(raw) as DatabaseSchema;
+    let needsSave = false;
     if (!Array.isArray(cachedDb.sellerListings)) {
       cachedDb.sellerListings = [];
+      needsSave = true;
+    }
+    if (!Array.isArray(cachedDb.parcelBookings)) {
+      cachedDb.parcelBookings = [];
+      needsSave = true;
+    }
+    if (typeof cachedDb.parcelSeq !== 'number') {
+      cachedDb.parcelSeq = 1000 + cachedDb.parcelBookings.length;
+      needsSave = true;
+    }
+    const existingAdmins = cachedDb.users.filter((u) => u.role === 'admin');
+    if (existingAdmins.length < 2 && !cachedDb.users.some((u) => u.id === 'usr-admin-2')) {
+      cachedDb.users.push({
+        id: 'usr-admin-2',
+        name: 'Admin 2 (সহযোগী অ্যাডমিন)',
+        mobile: '01602507071',
+        email: 'admin2@bazarmate.bd',
+        role: 'admin',
+        passwordHash: hashPassword('admin123'),
+        savedAddresses: [],
+        wishlist: [],
+        createdAt: new Date().toISOString(),
+      });
+      needsSave = true;
+    }
+    if (needsSave) {
+      saveDb(cachedDb);
     }
     return cachedDb;
   } catch {
@@ -1001,6 +1071,12 @@ export function getDb(): DatabaseSchema {
     saveDb(cachedDb);
     return cachedDb;
   }
+}
+
+export const MAX_ADMINS = 2;
+
+export function getAuthorizedAdmins(db: DatabaseSchema): StoredUser[] {
+  return db.users.filter((u) => u.role === 'admin').slice(0, MAX_ADMINS);
 }
 
 export function saveDb(db: DatabaseSchema): void {
@@ -1021,6 +1097,11 @@ export function sanitizeUser(u: StoredUser): User {
 export function createOrderNumber(db: DatabaseSchema): string {
   db.orderSeq += 1;
   return `BM-${db.orderSeq}`;
+}
+
+export function createParcelCode(db: DatabaseSchema): string {
+  db.parcelSeq = (db.parcelSeq || 1000) + 1;
+  return `PKG-${db.parcelSeq}`;
 }
 
 export function isValidStatusTransition(_from: OrderStatus, _to: OrderStatus): boolean {

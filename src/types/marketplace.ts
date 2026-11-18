@@ -233,3 +233,52 @@ export interface SellerListing {
   updatedAt: string;
 }
 
+export type ParcelStatus =
+  | 'Booked'
+  | 'Picked Up'
+  | 'In Transit'
+  | 'Delivered'
+  | 'Cancelled';
+
+export const PARCEL_STATUS_FLOW: ParcelStatus[] = [
+  'Booked',
+  'Picked Up',
+  'In Transit',
+  'Delivered',
+  'Cancelled',
+];
+
+export const PARCEL_STATUS_BN: Record<ParcelStatus, string> = {
+  Booked: 'বুকিং গৃহীত (Booked)',
+  'Picked Up': 'পার্সেল রিসিভ সম্পন্ন (Picked Up)',
+  'In Transit': 'ডেলিভারির পথে (In Transit)',
+  Delivered: 'ডেলিভারি সম্পন্ন (Delivered)',
+  Cancelled: 'বাতিলকৃত (Cancelled)',
+};
+
+export interface ParcelBooking {
+  id: string;
+  parcelCode: string;
+  userId?: string;
+  senderName: string;
+  senderMobile: string;
+  pickupArea: string;
+  pickupAddress: string;
+  receiverName: string;
+  receiverMobile: string;
+  deliveryZoneId: string;
+  deliveryArea: string;
+  deliveryAddress: string;
+  parcelType: string;
+  weight: string;
+  codAmount: number;
+  deliveryCharge: number;
+  note: string;
+  status: ParcelStatus;
+  riderName: string;
+  riderPhone: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+

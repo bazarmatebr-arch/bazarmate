@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import {
+  ArrowLeft,
   CheckCircle2,
   ImagePlus,
   MessageCircle,
@@ -22,6 +23,7 @@ interface SellProductSectionProps {
   categories: Category[];
   user: User | null;
   onOpenAdminSellers?: () => void;
+  onBackHome?: () => void;
 }
 
 const LISTING_STATUS_BN: Record<SellerListingStatus, string> = {
@@ -70,6 +72,7 @@ export function SellProductSection({
   categories,
   user,
   onOpenAdminSellers,
+  onBackHome,
 }: SellProductSectionProps) {
   const [sellerName, setSellerName] = useState(user?.name || '');
   const [shopName, setShopName] = useState('');
@@ -194,8 +197,18 @@ export function SellProductSection({
   return (
     <section
       id="sell-product"
-      className="max-w-7xl mx-auto px-4 sm:px-6 py-10 sm:py-14 border-t border-[#E5E4DF]"
+      className="max-w-7xl mx-auto px-4 sm:px-6 py-8 sm:py-12 border-t border-[#E5E4DF] space-y-5"
     >
+      {onBackHome && (
+        <button
+          type="button"
+          onClick={onBackHome}
+          className="inline-flex items-center gap-1.5 text-xs font-semibold text-[#52525B] hover:text-[#18181B]"
+        >
+          <ArrowLeft className="w-3.5 h-3.5" />
+          <span>হোমপেজে ফিরে যান</span>
+        </button>
+      )}
       <div className="bg-white border border-[#E5E4DF] rounded-2xl p-5 sm:p-8 space-y-6">
         <div className="flex flex-wrap items-start justify-between gap-4 border-b border-[#F0EFEA] pb-5">
           <div className="space-y-1.5 max-w-2xl">
@@ -275,13 +288,13 @@ export function SellProductSection({
               >
                 আরেকটি পণ্য আপলোড করুন
               </button>
-              {onOpenAdminSellers && (
+              {user?.role === 'admin' && onOpenAdminSellers && (
                 <button
                   type="button"
                   onClick={onOpenAdminSellers}
                   className="px-5 py-2.5 text-xs font-semibold rounded-lg border border-[#0F6B46] text-[#0F6B46] hover:bg-[#0F6B46]/5"
                 >
-                  অ্যাডমিন অনুমোদন প্যানেল
+                  JK অনুমোদন প্যানেল
                 </button>
               )}
             </div>

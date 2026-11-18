@@ -6,10 +6,13 @@ import {
   CheckSquare,
   ClipboardList,
   FolderTree,
+  KeyRound,
   Lock,
+  LogOut,
   Plus,
   Printer,
   Settings,
+  ShieldCheck,
   Store,
   Tag,
   Trash2,
@@ -20,6 +23,8 @@ import { api, setStoredToken } from '../lib/api';
 import {
   ORDER_STATUS_BN,
   ORDER_STATUS_FLOW,
+  PARCEL_STATUS_BN,
+  PARCEL_STATUS_FLOW,
   type AdminOverviewStats,
   type BannerSettings,
   type Category,
@@ -27,6 +32,8 @@ import {
   type DeliveryZone,
   type Order,
   type OrderStatus,
+  type ParcelBooking,
+  type ParcelStatus,
   type Product,
   type SellerListing,
   type SellerListingStatus,
@@ -40,23 +47,27 @@ interface AdminDashboardProps {
   initialSection?: AdminSection;
   focusOrderNumber?: string;
   onAuthSuccess: (user: User) => void;
+  onLogout?: () => void;
   onStorefrontRefresh: () => void;
 }
 
 export type AdminSection =
   | 'overview'
   | 'orders'
+  | 'parcels'
   | 'sellers'
   | 'products'
   | 'categories'
   | 'suppliers'
   | 'delivery'
   | 'coupons'
-  | 'customers';
+  | 'customers'
+  | 'security';
 
 const SECTION_LABELS: Record<AdminSection, string> = {
   overview: 'ওভারভিউ ও রিপোর্ট',
   orders: 'অর্ডার ও ফুলফিলমেন্ট প্যানেল',
+  parcels: 'পার্সেল কুরিয়ার (বড়লেখা)',
   sellers: 'বিক্রেতার আপলোডকৃত পণ্য',
   products: 'পণ্য ও স্টক',
   categories: 'ক্যাটাগরি ও সাব-ক্যাটাগরি',
@@ -64,6 +75,7 @@ const SECTION_LABELS: Record<AdminSection, string> = {
   delivery: 'ডেলিভারি চার্জ ও ব্যানার',
   coupons: 'কুপন ও ডিসকাউন্ট',
   customers: 'ক্রেতা তালিকা',
+  security: 'পাসওয়ার্ড ও ২ অ্যাডমিন নিয়ন্ত্রণ',
 };
 
 export function AdminDashboard({
@@ -71,14 +83,15 @@ export function AdminDashboard({
   initialSection = 'orders',
   focusOrderNumber,
   onAuthSuccess,
+  onLogout,
   onStorefrontRefresh,
 }: AdminDashboardProps) {
   const [section, setSection] = useState<AdminSection>(initialSection);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
-  // Admin Login state
-  const [loginId, setLoginId] = useState('admin@bazarmate.bd');
+  // Admin Login state (strictly 2 authorized admins, no pre-filled credentials)
+  const [loginId, setLoginId] = useState('');
   const [loginPass, setLoginPass] = useState('');
   const [loginError, setLoginError] = useState('');
 
@@ -93,6 +106,22 @@ export function AdminDashboard({
   const [banner, setBanner] = useState<BannerSettings | null>(null);
   const [customers, setCustomers] = useState<User[]>([]);
   const [sellerListings, setSellerListings] = useState<SellerListing[]>([]);
+  const [parcelBookings, setParcelBookings] = useState<ParcelBooking[]>([]);
+  const [admins, setAdmins] = useState<User[]>([]);
+
+  // Password Change & 2-Admin Security State
+  const [currentPw, setCurrentPw] = useState('');
+  const [newPw, setNewPw] = useState('');
+  const [confirmPw, setConfirmPw] = useState('');
+  const [pwMsg, setPwMsg] = useState('');
+  const [pwError, setPwError] = useState('');
+  const [editingAdminId, setEditingAdminId] = useState<string | null>(null);
+  const [adminEditName, setAdminEditName] = useState('');
+  const [adminEditEmail, setAdminEditEmail] = useState('');
+  const [adminEditMobile, setAdminEditMobile] = useState('');
+  const [adminEditPw, setAdminEditPw] = useState('');
+  const [actingAdminPw, setActingAdminPw] = useState('');
+  const [adminEditError, setAdminEditError] = useState('');
 
   // Order Fulfillment selection
   const [orderStatusFilter, setOrderStatusFilter] = useState<string>('ALL');
@@ -167,6 +196,8 @@ export function AdminDashboard({
       setBanner(data.banner);
       setCustomers(data.customers);
       setSellerListings(data.sellerListings || []);
+      setParcelBookings(data.parcelBookings || []);
+      setAdmins(data.admins || []);
       if (data.orders.length > 0) {
         const focused = focusOrderNumber
           ? data.orders.find((o) => o.orderNumber === focusOrderNumber)
@@ -210,15 +241,61 @@ export function AdminDashboard({
     e.preventDefault();
     setLoginError('');
     try {
-      const res = await api.login({ identifier: loginId, password: loginPass });
-      if (res.user.role !== 'admin') {
-        setLoginError('এই অ্যাকাউন্টটির অ্যাডমিন অনুমতি নেই।');
-        return;
-      }
+      const res = await api.adminLogin({ identifier: loginId, password: loginPass });
       setStoredToken(res.token);
+      setLoginPass('');
       onAuthSuccess(res.user);
     } catch (err) {
       setLoginError(err instanceof Error ? err.message : 'লগইন ব্যর্থ হয়েছে।');
+    }
+  }
+
+  async function handleChangeOwnPassword(e: React.FormEvent) {
+    e.preventDefault();
+    setPwError('');
+    setPwMsg('');
+    if (newPw.trim().length < 6) {
+      setPwError('নতুন পাসওয়ার্ড কমপক্ষে ৬ অক্ষরের হতে হবে।');
+      return;
+    }
+    if (newPw !== confirmPw) {
+      setPwError('নতুন পাসওয়ার্ড এবং কনফার্ম পাসওয়ার্ড মেলেনি।');
+      return;
+    }
+    try {
+      const res = await api.changeAdminPassword({
+        currentPassword: currentPw,
+        newPassword: newPw.trim(),
+      });
+      setPwMsg(res.message);
+      setCurrentPw('');
+      setNewPw('');
+      setConfirmPw('');
+      flashSaved('পাসওয়ার্ড পরিবর্তিত হয়েছে');
+    } catch (err) {
+      setPwError(err instanceof Error ? err.message : 'পাসওয়ার্ড পরিবর্তন করা যায়নি।');
+    }
+  }
+
+  async function handleUpdateAdminAccount(e: React.FormEvent) {
+    e.preventDefault();
+    if (!editingAdminId) return;
+    setAdminEditError('');
+    try {
+      await api.updateAdminAccount(editingAdminId, {
+        name: adminEditName,
+        email: adminEditEmail,
+        mobile: adminEditMobile,
+        newPassword: adminEditPw.trim() || undefined,
+        currentAdminPassword: actingAdminPw,
+      });
+      setEditingAdminId(null);
+      setAdminEditPw('');
+      setActingAdminPw('');
+      await loadDashboard();
+      flashSaved('অ্যাডমিন অ্যাকাউন্ট আপডেট হয়েছে');
+    } catch (err) {
+      setAdminEditError(err instanceof Error ? err.message : 'আপডেট সম্পন্ন হয়নি।');
     }
   }
 
@@ -236,31 +313,36 @@ export function AdminDashboard({
               <Lock className="w-5 h-5" />
             </div>
             <div>
-              <h1 className="text-xl font-bold text-[#18181B]">Bazar Mate অ্যাডমিন প্যানেল</h1>
-              <p className="text-xs text-[#52525B]">পণ্য, সাপ্লায়ার, অর্ডার ফুলফিলমেন্ট ও ডেলিভারি নিয়ন্ত্রণ</p>
+              <h1 className="text-xl font-bold text-[#18181B]">JK কন্ট্রোল প্যানেল</h1>
+              <p className="text-xs text-[#52525B]">
+                শুধুমাত্র অনুমোদিত ২ জন অ্যাডমিন লগইন করতে পারবেন
+              </p>
             </div>
           </div>
 
           <form onSubmit={handleAdminLogin} className="space-y-4">
             <div>
-              <label className="block text-xs font-medium text-[#18181B] mb-1">অ্যাডমিন ইমেইল</label>
+              <label className="block text-xs font-medium text-[#18181B] mb-1">
+                অ্যাডমিন ইমেইল বা মোবাইল নম্বর *
+              </label>
               <input
                 type="text"
                 required
                 value={loginId}
                 onChange={(e) => setLoginId(e.target.value)}
-                className="w-full px-3.5 py-2.5 text-sm border border-[#E5E4DF] rounded-lg"
+                placeholder="ইমেইল বা মোবাইল নম্বর"
+                className="w-full px-3.5 py-2.5 text-sm border border-[#E5E4DF] rounded-lg focus:outline-none focus:border-[#0F6B46]"
               />
             </div>
             <div>
-              <label className="block text-xs font-medium text-[#18181B] mb-1">পাসওয়ার্ড</label>
+              <label className="block text-xs font-medium text-[#18181B] mb-1">পাসওয়ার্ড *</label>
               <input
                 type="password"
                 required
                 value={loginPass}
                 onChange={(e) => setLoginPass(e.target.value)}
-                placeholder="admin123"
-                className="w-full px-3.5 py-2.5 text-sm border border-[#E5E4DF] rounded-lg"
+                placeholder="••••••••"
+                className="w-full px-3.5 py-2.5 text-sm border border-[#E5E4DF] rounded-lg focus:outline-none focus:border-[#0F6B46]"
               />
             </div>
 
@@ -272,20 +354,9 @@ export function AdminDashboard({
 
             <button
               type="submit"
-              className="w-full py-2.5 text-sm font-semibold rounded-lg bg-[#0F6B46] text-white hover:bg-[#0B5235]"
+              className="w-full py-2.5 text-sm font-semibold rounded-lg bg-[#0F6B46] text-white hover:bg-[#0B5235] min-h-[44px]"
             >
-              অ্যাডমিন ড্যাশবোর্ডে প্রবেশ করুন
-            </button>
-
-            <button
-              type="button"
-              onClick={() => {
-                setLoginId('admin@bazarmate.bd');
-                setLoginPass('admin123');
-              }}
-              className="w-full py-2 text-xs font-medium text-[#52525B] border border-[#E5E4DF] rounded-lg hover:bg-[#FAF9F6]"
-            >
-              অ্যাডমিন ডেমো তথ্য পূরণ করুন (admin@bazarmate.bd / admin123)
+              JK প্যানেলে প্রবেশ করুন
             </button>
           </form>
         </div>
@@ -424,10 +495,18 @@ export function AdminDashboard({
       : orders.filter((o) => o.status === orderStatusFilter);
 
   const pendingSellerCount = sellerListings.filter((s) => s.status === 'Pending').length;
+  const activeParcelCount = parcelBookings.filter(
+    (p) => !['Delivered', 'Cancelled'].includes(p.status),
+  ).length;
 
   const navItems: { id: AdminSection; label: string; icon: typeof BarChart3 }[] = [
     { id: 'overview', label: 'ওভারভিউ ও রিপোর্ট', icon: BarChart3 },
     { id: 'orders', label: 'অর্ডার ও ফুলফিলমেন্ট', icon: ClipboardList },
+    {
+      id: 'parcels',
+      label: activeParcelCount > 0 ? `পার্সেল কুরিয়ার (${activeParcelCount})` : 'পার্সেল কুরিয়ার',
+      icon: Truck,
+    },
     {
       id: 'sellers',
       label: pendingSellerCount > 0 ? `বিক্রেতা পণ্য (${pendingSellerCount})` : 'বিক্রেতা পণ্য',
@@ -439,6 +518,7 @@ export function AdminDashboard({
     { id: 'delivery', label: 'ডেলিভারি ও ব্যানার', icon: Truck },
     { id: 'coupons', label: 'কুপন', icon: Tag },
     { id: 'customers', label: 'ক্রেতা', icon: Users },
+    { id: 'security', label: 'পাসওয়ার্ড ও অ্যাডমিন', icon: ShieldCheck },
   ];
 
   // Group selected order items by Supplier for Procurement List
@@ -464,8 +544,11 @@ export function AdminDashboard({
         {/* 240px Sidebar Navigation */}
         <aside className="lg:w-64 shrink-0 bg-white border-b lg:border-b-0 lg:border-r border-[#E5E4DF] p-4">
           <div className="px-2 pb-3 mb-3 border-b border-[#F0EFEA] hidden lg:block">
-            <p className="text-xs font-semibold text-[#52525B]">Bazar Mate অপারেশনস</p>
-            <p className="text-sm font-bold text-[#18181B]">অ্যাডমিন কন্ট্রোল</p>
+            <p className="text-xs font-semibold text-[#52525B]">JK অপারেশনস</p>
+            <p className="text-sm font-bold text-[#18181B] truncate">{user.name}</p>
+            <p className="text-[11px] text-[#71717A] font-mono-tabular truncate">
+              {user.email || user.mobile}
+            </p>
           </div>
           <nav className="flex lg:flex-col gap-1 overflow-x-auto no-scrollbar">
             {navItems.map((item) => {
@@ -495,11 +578,11 @@ export function AdminDashboard({
           {/* Top Breadcrumb Bar */}
           <div className="flex flex-wrap items-center justify-between gap-3 pb-4 border-b border-[#E5E4DF]">
             <div className="text-sm text-[#52525B]">
-              <span>অ্যাডমিন</span>
+              <span>JK</span>
               <span className="mx-2">/</span>
               <span className="font-semibold text-[#18181B]">{SECTION_LABELS[section]}</span>
             </div>
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2.5">
               {savedNotice && (
                 <span className="text-xs font-semibold text-[#0F6B46]">{savedNotice}</span>
               )}
@@ -510,6 +593,16 @@ export function AdminDashboard({
               >
                 {loading ? 'রিফ্রেশ হচ্ছে...' : 'ডেটা রিফ্রেশ'}
               </button>
+              {onLogout && (
+                <button
+                  type="button"
+                  onClick={onLogout}
+                  className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold border border-[#E5E4DF] bg-white text-[#DC2626] rounded-lg hover:bg-[#FEF2F2]"
+                >
+                  <LogOut className="w-3.5 h-3.5" />
+                  <span>লগআউট</span>
+                </button>
+              )}
             </div>
           </div>
 
@@ -2186,6 +2279,423 @@ export function AdminDashboard({
                       </div>
                     );
                   })}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* 10. ADMIN PASSWORD & 2-ADMIN ACCESS CONTROL */}
+          {section === 'security' && (
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+              {/* Own Password Change */}
+              <form
+                onSubmit={handleChangeOwnPassword}
+                className="lg:col-span-5 bg-white border border-[#E5E4DF] rounded-xl p-5 space-y-4 h-fit"
+              >
+                <div className="flex items-center gap-2">
+                  <KeyRound className="w-4 h-4 text-[#0F6B46]" />
+                  <h2 className="text-sm font-bold text-[#18181B]">
+                    আপনার পাসওয়ার্ড পরিবর্তন করুন
+                  </h2>
+                </div>
+                <p className="text-xs text-[#52525B]">
+                  বর্তমান লগইন করা অ্যাকাউন্ট: <span className="font-semibold text-[#18181B]">{user.email || user.mobile}</span>
+                </p>
+
+                <div>
+                  <label className="block text-[11px] font-medium text-[#52525B] mb-1">
+                    বর্তমান পাসওয়ার্ড *
+                  </label>
+                  <input
+                    type="password"
+                    required
+                    value={currentPw}
+                    onChange={(e) => setCurrentPw(e.target.value)}
+                    placeholder="••••••••"
+                    className="w-full px-3 py-2 text-sm border border-[#E5E4DF] rounded-lg focus:outline-none focus:border-[#0F6B46]"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] font-medium text-[#52525B] mb-1">
+                    নতুন পাসওয়ার্ড (কমপক্ষে ৬ অক্ষর) *
+                  </label>
+                  <input
+                    type="password"
+                    required
+                    minLength={6}
+                    value={newPw}
+                    onChange={(e) => setNewPw(e.target.value)}
+                    placeholder="নতুন পাসওয়ার্ড"
+                    className="w-full px-3 py-2 text-sm border border-[#E5E4DF] rounded-lg focus:outline-none focus:border-[#0F6B46]"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] font-medium text-[#52525B] mb-1">
+                    নতুন পাসওয়ার্ড নিশ্চিত করুন *
+                  </label>
+                  <input
+                    type="password"
+                    required
+                    minLength={6}
+                    value={confirmPw}
+                    onChange={(e) => setConfirmPw(e.target.value)}
+                    placeholder="পুনরায় লিখুন"
+                    className="w-full px-3 py-2 text-sm border border-[#E5E4DF] rounded-lg focus:outline-none focus:border-[#0F6B46]"
+                  />
+                </div>
+
+                {pwError && (
+                  <p className="text-xs text-[#DC2626] bg-[#FEF2F2] p-2.5 rounded-lg border border-[#FECACA]">
+                    {pwError}
+                  </p>
+                )}
+                {pwMsg && (
+                  <p className="text-xs text-[#0F6B46] bg-[#0F6B46]/5 p-2.5 rounded-lg border border-[#0F6B46]/20">
+                    {pwMsg}
+                  </p>
+                )}
+
+                <button
+                  type="submit"
+                  className="w-full py-2.5 text-xs font-semibold rounded-lg bg-[#0F6B46] text-white hover:bg-[#0B5235]"
+                >
+                  পাসওয়ার্ড আপডেট করুন
+                </button>
+              </form>
+
+              {/* 2 Authorized Admins List & Account Edit */}
+              <div className="lg:col-span-7 space-y-4">
+                <div className="bg-white border border-[#E5E4DF] rounded-xl p-5 space-y-4">
+                  <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[#F0EFEA] pb-3">
+                    <div>
+                      <h2 className="text-sm font-bold text-[#18181B]">
+                        অনুমোদিত অ্যাডমিন অ্যাকাউন্ট ({admins.length}/2)
+                      </h2>
+                      <p className="text-xs text-[#52525B]">
+                        নিরাপত্তার জন্য শুধুমাত্র এই ২ জন অ্যাডমিন JK প্যানেলে লগইন করতে পারবেন।
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="space-y-3">
+                    {admins.map((adm, idx) => (
+                      <div
+                        key={adm.id}
+                        className="p-4 rounded-xl border border-[#E5E4DF] bg-[#FAF9F6] flex flex-wrap items-center justify-between gap-3"
+                      >
+                        <div className="space-y-0.5 text-xs">
+                          <div className="font-bold text-sm text-[#18181B]">
+                            অ্যাডমিন #{idx + 1}: {adm.name}
+                            {adm.id === user.id && (
+                              <span className="ml-2 text-[11px] font-semibold text-[#0F6B46]">
+                                (বর্তমানে লগইন)
+                              </span>
+                            )}
+                          </div>
+                          <div className="font-mono-tabular text-[#52525B]">
+                            ইমেইল: {adm.email || '—'} · মোবাইল: {adm.mobile}
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setEditingAdminId(adm.id);
+                            setAdminEditName(adm.name);
+                            setAdminEditEmail(adm.email || '');
+                            setAdminEditMobile(adm.mobile);
+                            setAdminEditPw('');
+                            setActingAdminPw('');
+                            setAdminEditError('');
+                          }}
+                          className="px-3 py-1.5 text-xs font-semibold rounded-lg border border-[#0F6B46] text-[#0F6B46] bg-white hover:bg-[#0F6B46]/5"
+                        >
+                          তথ্য / পাসওয়ার্ড পরিবর্তন
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+
+                  {editingAdminId && (
+                    <form
+                      onSubmit={handleUpdateAdminAccount}
+                      className="mt-4 pt-4 border-t border-[#E5E4DF] space-y-3"
+                    >
+                      <div className="flex items-center justify-between">
+                        <h3 className="text-xs font-bold text-[#18181B]">
+                          অ্যাডমিন তথ্য ও পাসওয়ার্ড আপডেট
+                        </h3>
+                        <button
+                          type="button"
+                          onClick={() => setEditingAdminId(null)}
+                          className="text-xs text-[#52525B] hover:underline"
+                        >
+                          বাতিল
+                        </button>
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                        <div>
+                          <label className="block text-[11px] text-[#52525B] mb-1">নাম *</label>
+                          <input
+                            type="text"
+                            required
+                            value={adminEditName}
+                            onChange={(e) => setAdminEditName(e.target.value)}
+                            className="w-full px-3 py-2 text-xs bg-white border border-[#E5E4DF] rounded-lg"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[11px] text-[#52525B] mb-1">ইমেইল *</label>
+                          <input
+                            type="email"
+                            required
+                            value={adminEditEmail}
+                            onChange={(e) => setAdminEditEmail(e.target.value)}
+                            className="w-full px-3 py-2 text-xs bg-white border border-[#E5E4DF] rounded-lg"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[11px] text-[#52525B] mb-1">মোবাইল *</label>
+                          <input
+                            type="tel"
+                            required
+                            value={adminEditMobile}
+                            onChange={(e) => setAdminEditMobile(e.target.value)}
+                            className="w-full px-3 py-2 text-xs bg-white border border-[#E5E4DF] rounded-lg tabular-nums"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div>
+                          <label className="block text-[11px] text-[#52525B] mb-1">
+                            নতুন পাসওয়ার্ড (পরিবর্তন না করলে খালি রাখুন)
+                          </label>
+                          <input
+                            type="password"
+                            value={adminEditPw}
+                            onChange={(e) => setAdminEditPw(e.target.value)}
+                            placeholder="কমপক্ষে ৬ অক্ষর"
+                            className="w-full px-3 py-2 text-xs bg-white border border-[#E5E4DF] rounded-lg"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[11px] text-[#52525B] mb-1">
+                            নিশ্চিত করতে আপনার বর্তমান পাসওয়ার্ড *
+                          </label>
+                          <input
+                            type="password"
+                            required
+                            value={actingAdminPw}
+                            onChange={(e) => setActingAdminPw(e.target.value)}
+                            placeholder="বর্তমান পাসওয়ার্ড"
+                            className="w-full px-3 py-2 text-xs bg-white border border-[#E5E4DF] rounded-lg"
+                          />
+                        </div>
+                      </div>
+
+                      {adminEditError && (
+                        <p className="text-xs text-[#DC2626] bg-[#FEF2F2] p-2 rounded-lg border border-[#FECACA]">
+                          {adminEditError}
+                        </p>
+                      )}
+
+                      <button
+                        type="submit"
+                        className="px-4 py-2 text-xs font-semibold rounded-lg bg-[#0F6B46] text-white hover:bg-[#0B5235]"
+                      >
+                        পরিবর্তন সংরক্ষণ করুন
+                      </button>
+                    </form>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* 11. BARLEKHA PARCEL COURIER MANAGEMENT */}
+          {section === 'parcels' && (
+            <div className="space-y-4">
+              <div className="bg-white border border-[#E5E4DF] rounded-xl p-4 sm:p-5 flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <h2 className="text-sm font-bold text-[#18181B]">
+                    বড়লেখা উপজেলা পার্সেল রিসিভ ও ডেলিভারি (কুরিয়ার সেবা)
+                  </h2>
+                  <p className="text-xs text-[#52525B]">
+                    পার্সেল পিকআপ, রাইডার অ্যাসাইনমেন্ট, কুরিয়ার চার্জ ও ডেলিভারি স্ট্যাটাস নিয়ন্ত্রণ করুন।
+                  </p>
+                </div>
+                <span className="text-xs font-mono-tabular text-[#52525B]">
+                  মোট বুকিং: {parcelBookings.length} · চলমান: {activeParcelCount}
+                </span>
+              </div>
+
+              {parcelBookings.length === 0 ? (
+                <div className="bg-white border border-[#E5E4DF] rounded-xl p-10 text-center text-sm text-[#52525B]">
+                  এখনো কোনো পার্সেল বুকিং জমা হয়নি।
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {parcelBookings.map((parcel) => (
+                    <div
+                      key={parcel.id}
+                      className="bg-white border border-[#E5E4DF] rounded-xl p-4 sm:p-5 space-y-4"
+                    >
+                      <div className="flex flex-wrap items-start justify-between gap-3 border-b border-[#F0EFEA] pb-3">
+                        <div className="space-y-1 text-xs">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className="font-mono-tabular font-bold text-sm text-[#0F6B46]">
+                              {parcel.parcelCode}
+                            </span>
+                            <span aria-hidden="true">·</span>
+                            <span className="font-semibold text-[#18181B]">
+                              {parcel.parcelType} ({parcel.weight})
+                            </span>
+                            <span aria-hidden="true">·</span>
+                            <span className="font-semibold text-[#18181B]">
+                              {PARCEL_STATUS_BN[parcel.status]}
+                            </span>
+                          </div>
+                          <div className="text-[#52525B]">
+                            প্রেরক: <span className="text-[#18181B] font-medium">{parcel.senderName}</span> ({parcel.senderMobile}) · পিকআপ: {parcel.pickupArea} — {parcel.pickupAddress}
+                          </div>
+                          <div className="text-[#52525B]">
+                            প্রাপক: <span className="text-[#18181B] font-medium">{parcel.receiverName}</span> ({parcel.receiverMobile}) · গন্তব্য: {parcel.deliveryArea} — {parcel.deliveryAddress}
+                          </div>
+                        </div>
+
+                        <div className="text-right tabular-nums text-xs shrink-0">
+                          <div className="text-[#52525B]">কুরিয়ার চার্জ</div>
+                          <div className="text-base font-bold text-[#0F6B46]">
+                            ৳{parcel.deliveryCharge}
+                          </div>
+                          {parcel.codAmount > 0 && (
+                            <div className="text-[11px] text-[#D97706] font-semibold">
+                              COD সংগ্রহ: ৳{parcel.codAmount}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 items-end">
+                        <div>
+                          <label className="block text-[10px] text-[#52525B] mb-1">
+                            পার্সেল স্ট্যাটাস
+                          </label>
+                          <select
+                            value={parcel.status}
+                            onChange={async (e) => {
+                              await api.updateParcel(parcel.id, {
+                                status: e.target.value as ParcelStatus,
+                              });
+                              await loadDashboard();
+                              flashSaved(`${parcel.parcelCode} স্ট্যাটাস আপডেট হয়েছে`);
+                            }}
+                            className="w-full px-2.5 py-2 text-xs bg-[#FAF9F6] border border-[#E5E4DF] rounded-lg"
+                          >
+                            {PARCEL_STATUS_FLOW.map((st) => (
+                              <option key={st} value={st}>
+                                {PARCEL_STATUS_BN[st]}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+
+                        <div>
+                          <label className="block text-[10px] text-[#52525B] mb-1">
+                            ডেলিভারি রাইডার
+                          </label>
+                          <input
+                            type="text"
+                            defaultValue={parcel.riderName || ''}
+                            placeholder="রাইডারের নাম"
+                            onBlur={async (e) => {
+                              const val = e.target.value.trim();
+                              if (val !== (parcel.riderName || '')) {
+                                await api.updateParcel(parcel.id, { riderName: val });
+                                await loadDashboard();
+                                flashSaved('রাইডার তথ্য সংরক্ষিত');
+                              }
+                            }}
+                            className="w-full px-2.5 py-2 text-xs bg-[#FAF9F6] border border-[#E5E4DF] rounded-lg"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-[10px] text-[#52525B] mb-1">
+                            রাইডার মোবাইল
+                          </label>
+                          <input
+                            type="tel"
+                            defaultValue={parcel.riderPhone || ''}
+                            placeholder="01XXXXXXXXX"
+                            onBlur={async (e) => {
+                              const val = e.target.value.trim();
+                              if (val !== (parcel.riderPhone || '')) {
+                                await api.updateParcel(parcel.id, { riderPhone: val });
+                                await loadDashboard();
+                                flashSaved('রাইডার মোবাইল সংরক্ষিত');
+                              }
+                            }}
+                            className="w-full px-2.5 py-2 text-xs bg-[#FAF9F6] border border-[#E5E4DF] rounded-lg tabular-nums"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-[10px] text-[#52525B] mb-1">
+                            নোট / নির্দেশনা
+                          </label>
+                          <input
+                            type="text"
+                            defaultValue={parcel.note || ''}
+                            placeholder="প্রয়োজনীয় নোট"
+                            onBlur={async (e) => {
+                              const val = e.target.value.trim();
+                              if (val !== (parcel.note || '')) {
+                                await api.updateParcel(parcel.id, { note: val });
+                                await loadDashboard();
+                                flashSaved('নোট সংরক্ষিত');
+                              }
+                            }}
+                            className="w-full px-2.5 py-2 text-xs bg-[#FAF9F6] border border-[#E5E4DF] rounded-lg"
+                          />
+                        </div>
+
+                        <div className="flex items-center justify-end gap-2">
+                          <div className="w-20">
+                            <label className="block text-[10px] text-[#52525B] mb-1">
+                              চার্জ ৳
+                            </label>
+                            <input
+                              type="number"
+                              defaultValue={parcel.deliveryCharge}
+                              onBlur={async (e) => {
+                                const val = Number(e.target.value);
+                                if (!Number.isNaN(val) && val >= 0 && val !== parcel.deliveryCharge) {
+                                  await api.updateParcel(parcel.id, { deliveryCharge: val });
+                                  await loadDashboard();
+                                  flashSaved('কুরিয়ার চার্জ আপডেট');
+                                }
+                              }}
+                              className="w-full px-2 py-2 text-xs bg-[#FAF9F6] border border-[#E5E4DF] rounded-lg tabular-nums"
+                            />
+                          </div>
+                          <button
+                            type="button"
+                            onClick={async () => {
+                              await api.deleteParcel(parcel.id);
+                              await loadDashboard();
+                              flashSaved('পার্সেল বুকিং মুছে ফেলা হয়েছে');
+                            }}
+                            aria-label="পার্সেল মুছুন"
+                            className="p-2 mt-4 rounded-lg border border-[#E5E4DF] text-[#71717A] hover:text-[#DC2626]"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
                 </div>
               )}
             </div>

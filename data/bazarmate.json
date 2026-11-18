@@ -854,6 +854,17 @@
         "prod-5"
       ],
       "createdAt": "2026-11-18T09:19:03.963Z"
+    },
+    {
+      "id": "usr-admin-2",
+      "name": "Admin 2 (সহযোগী অ্যাডমিন)",
+      "mobile": "01602507071",
+      "email": "admin2@bazarmate.bd",
+      "role": "admin",
+      "passwordHash": "160c8f5f2e86724bb0ae5f3aed56a3bd:08f4fde91349bcacb4880cc909eae85fae1ef8216014004dc75df9c74587bf665ba5e72e735d753900c1d403a15d1d6cf0a463e862fad502952958e2e5dde673",
+      "savedAddresses": [],
+      "wishlist": [],
+      "createdAt": "2026-11-18T12:27:05.030Z"
     }
   ],
   "reviews": [
@@ -886,5 +897,7 @@
     }
   ],
   "orderSeq": 1002,
-  "sellerListings": []
+  "sellerListings": [],
+  "parcelBookings": [],
+  "parcelSeq": 1001
 }

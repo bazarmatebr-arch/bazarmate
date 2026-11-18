@@ -293,7 +293,7 @@ export function AccountView({
 
           {mode === 'login' && (
             <div className="pt-3 border-t border-[#F0EFEA] space-y-2 text-xs text-[#52525B]">
-              <p className="font-medium text-[#18181B]">দ্রুত ডেমো অ্যাকাউন্ট ব্যবহার করুন:</p>
+              <p className="font-medium text-[#18181B]">দ্রুত ডেমো ক্রেতা অ্যাকাউন্ট ব্যবহার করুন:</p>
               <div className="flex flex-wrap gap-2">
                 <button
                   type="button"
@@ -304,16 +304,6 @@ export function AccountView({
                   className="px-3 py-1.5 border border-[#E5E4DF] rounded-md hover:bg-[#FAF9F6]"
                 >
                   ক্রেতা ডেমো (01712345678)
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setIdentifier('admin@bazarmate.bd');
-                    setPassword('admin123');
-                  }}
-                  className="px-3 py-1.5 border border-[#E5E4DF] rounded-md hover:bg-[#FAF9F6]"
-                >
-                  অ্যাডমিন ডেমো
                 </button>
               </div>
             </div>

@@ -7,6 +7,8 @@ import type {
   Order,
   OrderItem,
   OrderStatus,
+  ParcelBooking,
+  ParcelStatus,
   Product,
   Review,
   SavedAddress,
@@ -84,6 +86,12 @@ export const api = {
       body: JSON.stringify(payload),
     }),
 
+  adminLogin: (payload: { identifier: string; password: string }) =>
+    request<{ token: string; user: User }>('/api/admin/login', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+
   getMe: () => request<{ user: User }>('/api/auth/me'),
 
   updateProfile: (payload: {
@@ -145,7 +153,30 @@ export const api = {
       banner: BannerSettings;
       customers: User[];
       sellerListings: SellerListing[];
+      parcelBookings: ParcelBooking[];
+      admins: User[];
     }>('/api/admin/dashboard'),
+
+  changeAdminPassword: (payload: { currentPassword: string; newPassword: string }) =>
+    request<{ ok: boolean; message: string }>('/api/admin/password', {
+      method: 'PATCH',
+      body: JSON.stringify(payload),
+    }),
+
+  updateAdminAccount: (
+    id: string,
+    payload: {
+      name?: string;
+      email?: string;
+      mobile?: string;
+      newPassword?: string;
+      currentAdminPassword: string;
+    },
+  ) =>
+    request<{ admin: User }>(`/api/admin/admins/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(payload),
+    }),
 
   createProduct: (payload: Partial<Product>) =>
     request<Product>('/api/admin/products', {
@@ -289,6 +320,54 @@ export const api = {
 
   deleteSellerListing: (id: string) =>
     request<{ ok: boolean }>(`/api/admin/seller-listings/${id}`, {
+      method: 'DELETE',
+    }),
+
+  // Barlekha Parcel Courier APIs
+  createParcel: (payload: {
+    senderName: string;
+    senderMobile: string;
+    pickupArea: string;
+    pickupAddress: string;
+    receiverName: string;
+    receiverMobile: string;
+    deliveryZoneId: string;
+    deliveryArea: string;
+    deliveryAddress: string;
+    parcelType: string;
+    weight: string;
+    codAmount?: number;
+    note?: string;
+  }) =>
+    request<ParcelBooking>('/api/parcels', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+
+  trackParcels: (query: { parcelCode?: string; mobile?: string }) => {
+    const params = new URLSearchParams();
+    if (query.parcelCode) params.set('parcelCode', query.parcelCode);
+    if (query.mobile) params.set('mobile', query.mobile);
+    return request<ParcelBooking[]>(`/api/parcels/track?${params.toString()}`);
+  },
+
+  updateParcel: (
+    id: string,
+    payload: {
+      status?: ParcelStatus;
+      riderName?: string;
+      riderPhone?: string;
+      deliveryCharge?: number;
+      note?: string;
+    },
+  ) =>
+    request<ParcelBooking>(`/api/admin/parcels/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(payload),
+    }),
+
+  deleteParcel: (id: string) =>
+    request<{ ok: boolean }>(`/api/admin/parcels/${id}`, {
       method: 'DELETE',
     }),
 };

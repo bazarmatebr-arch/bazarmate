@@ -199,7 +199,7 @@ export function CheckoutModal({
               >
                 অর্ডার স্ট্যাটাস ট্র্যাক করুন
               </button>
-              {onOpenOrderPanel && (
+              {user?.role === 'admin' && onOpenOrderPanel && (
                 <button
                   type="button"
                   onClick={() => {
@@ -209,7 +209,7 @@ export function CheckoutModal({
                   }}
                   className="px-6 py-3 text-sm font-semibold rounded-lg border border-[#0F6B46] text-[#0F6B46] hover:bg-[#0F6B46]/5"
                 >
-                  অর্ডার ম্যানেজমেন্ট প্যানেল
+                  JK প্যানেলে দেখুন
                 </button>
               )}
               <button
